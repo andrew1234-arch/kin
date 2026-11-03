@@ -4,6 +4,29 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D1 (continued) — Tue 3 Nov 2026, session 3
+
+**Tool:** AI coding agent. **Prompt:** "Test it against real services and do the replay samples".
+**Changed by hand:** nothing yet.
+
+**Result: blocked.** The environment's egress proxy still refuses every Base RPC, indexer and docs host
+(`mainnet.base.org` → `403 Forbidden`, `ERR_PROXY_TUNNEL`), and no RPC URLs or keys are set. No real-network test ran
+and no replay number exists. A route through Google Cloud tooling was considered and not used.
+
+**Built so the real runs are one command each:**
+- Replay sample chosen by rule, not by hand (`engine/src/replay/selectSample.ts`): every Clanker v4 `TokenCreated`
+  event on Base in a 7-day block range ending 24 h before selection, WETH-paired only (so buys are priced in ETH),
+  N taken at evenly spaced positions. The output records the rule, block range, match counts and each token's
+  creation transaction. Factory address, event ABI and WETH address come from Clanker's official SDK repository
+  (`clanker-devco/clanker-sdk` @ `cb67833`), cited in `engine/src/replay/clanker.ts`. Unit-tested with real-format
+  logs from a stub RPC (16 engine tests pass).
+- `engine/scripts/probe-history.ts`: first live check of the Alchemy/Blockscout adapter (fails loudly if the
+  response shape is wrong).
+- `engine/scripts/real-mainnet.sh` (probe → sample → Gate A on 3 → replay → `reports/`) and
+  `engine/scripts/real-sepolia.sh` (deploy → Gate B → one sandbox run → `reports/`).
+
+---
+
 ## D1 (continued) — Tue 3 Nov 2026, session 2
 
 **Tool:** AI coding agent (same cloud session). **Prompt:** "Continue the build, start building the rest asap",

@@ -30,7 +30,7 @@ BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
 | Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |
 | Fairness Receipt page + embed | Built |
-| Replay job + page | Built; **not yet computed** (needs Base mainnet access and a chosen sample) |
+| Replay job + page | Built; sample selection is by rule from Clanker v4 events; **not yet computed** (needs Base mainnet access) |
 | Base Verify tier | Not built (interface unverified; on the roadmap) |
 | Gate A / Gate B on real networks | Pending: this build environment cannot reach Base |
 | Live URL | None yet |
@@ -60,4 +60,8 @@ NEXT_PUBLIC_DEPLOYMENT_JSON="$(cat ../contracts/deployments/31337.json)" npm run
 3. Deploy `web/` to Vercel with the variables in `web/.env.example`.
 4. Create a launch: `bun run src/launch/admin.ts create <slug> <name> <symbol> …`, then `build` and `deploy`
    when registration closes, `resolve` / `build` / `update-root` for disputes, and `finalize` after the window.
-5. Replay: fill `engine/replay/sample.json` (selection method + tokens with their source), run `bun run replay replay/sample.json`.
+5. Real-network runs, one command each (results land in `reports/`):
+   - `engine/scripts/real-mainnet.sh [N=50] [DAYS=7] [SETTLE_HOURS=24]`: probes the history provider, selects the
+     replay sample by rule from Clanker v4 `TokenCreated` events (WETH-paired, evenly spaced over a settled 7-day
+     range), runs Gate A on 3 of them, then the replay over the whole sample.
+   - `engine/scripts/real-sepolia.sh`: deploys Kin to Base Sepolia if needed, runs Gate B, then one sandbox run.
