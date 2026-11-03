@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "bun run src/server.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "allowlist": "bun run src/allowlist/cli.ts",
-    "gate-a": "bun run src/gates/gateA.ts"
+    "gate-a": "bun run src/gates/gateA.ts",
+    "sandbox": "bun run src/sandbox/cli.ts",
+    "replay": "bun run src/replay/replay.ts",
+    "admin": "bun run src/launch/admin.ts",
+    "abis": "bun run scripts/export-abis.ts"
   },
   "dependencies": {
     "@openzeppelin/merkle-tree": "^1.0.8",

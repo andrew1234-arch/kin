@@ -119,6 +119,7 @@ describe("LaunchService on a local chain", () => {
     // Once the window has started, the allowlist is frozen.
     svc.attachOnchain(slug, {
       poolId: ("0x" + "11".repeat(32)) as Hex,
+      key: { currency0: linked[0]!.address, currency1: linked[0]!.address, fee: 0, tickSpacing: 1, hooks: linked[0]!.address },
       token: linked[0]!.address,
       launchTx: ("0x" + "22".repeat(32)) as Hex,
       windowStart: Math.floor(Date.now() / 1000) - 1,

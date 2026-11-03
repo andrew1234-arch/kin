@@ -28,6 +28,8 @@ export interface LaunchRecord {
   };
   onchain: null | {
     poolId: Hex;
+    /** The v4 PoolKey, needed by KinRouter.swapExactIn. */
+    key: { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
     token: Address;
     launchTx: Hex;
     windowStart: number;

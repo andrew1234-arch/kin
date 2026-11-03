@@ -171,6 +171,23 @@ export class LaunchService {
     return e;
   }
 
+  /** What one wallet needs to see: registered? on the allowlist (live version)? its entry. */
+  walletStatus(slug: string, walletIn: string) {
+    if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
+    const w = getAddress(walletIn);
+    const rec = this.get(slug);
+    const reg = rec.registrations.find((r) => r.wallet === w) ?? null;
+    let entry: AllowlistEntry | null = null;
+    let entityMembers: number | null = null;
+    if (rec.allowlist) {
+      const all = this.entries(slug);
+      entry = all.find((x) => x.wallet === w) ?? null;
+      if (entry) entityMembers = all.filter((x) => x.entityId === entry!.entityId).length;
+    }
+    const disputes = rec.disputes.filter((d) => d.wallet === w).map(({ signature: _s, ...d }) => d);
+    return { wallet: w, registered: !!reg, registeredAt: reg?.at ?? null, entry, entityMembers, disputes };
+  }
+
   async dispute(slug: string, walletIn: string, reason: string, signature: Hex): Promise<Dispute> {
     const rec = this.get(slug);
     if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");

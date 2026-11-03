@@ -10,12 +10,9 @@
  *
  * Env: LAUNCH_RPC_URL, LAUNCH_CHAIN_ID, LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT (contracts/deployments/<chainId>.json), DATA_DIR.
  */
-import { readFileSync } from "node:fs";
-import { createWalletClient, getAddress, http, parseEther, parseEventLogs, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { kinHookAbi, kinLaunchFactoryAbi } from "../abi/kin";
+import { parseEther, type Hex } from "viem";
 import { launchRuntime } from "../runtime";
-import { chainFor } from "../sandbox/relayer";
+import { adminClients, deployLaunch, finalizeLaunch, updateRoot } from "./onchain";
 
 const [cmd, slug, ...rest] = process.argv.slice(2);
 if (!cmd || !slug) {
@@ -26,12 +23,10 @@ const rt = launchRuntime();
 const now = () => Math.floor(Date.now() / 1000);
 
 function onchainClients() {
-  const key = process.env.LAUNCH_ADMIN_KEY as Hex | undefined;
-  const depPath = process.env.LAUNCH_DEPLOYMENT;
-  if (!key || !depPath || !rt.rpcUrl || !rt.pub) throw new Error("LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT and LAUNCH_RPC_URL are required");
-  const dep = JSON.parse(readFileSync(depPath, "utf8"));
-  const wallet = createWalletClient({ chain: chainFor(rt.chainId, rt.rpcUrl), transport: http(rt.rpcUrl), account: privateKeyToAccount(key) });
-  return { wallet, pub: rt.pub, factory: getAddress(dep.factory), hook: getAddress(dep.kinHook) };
+  const adminKey = process.env.LAUNCH_ADMIN_KEY as Hex | undefined;
+  const deploymentPath = process.env.LAUNCH_DEPLOYMENT;
+  if (!adminKey || !deploymentPath || !rt.rpcUrl) throw new Error("LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT and LAUNCH_RPC_URL are required");
+  return adminClients({ rpcUrl: rt.rpcUrl, chainId: rt.chainId, adminKey, deploymentPath });
 }
 
 switch (cmd) {
@@ -67,75 +62,15 @@ switch (cmd) {
     break;
   }
   case "deploy": {
-    const rec = rt.service.get(slug);
-    if (!rec.allowlist) throw new Error("build the allowlist first");
-    if (rec.onchain) throw new Error("already deployed");
-    const { wallet, pub, factory } = onchainClients();
-    const head = await pub.getBlock();
-    const windowStart = head.timestamp + BigInt(rec.window.delayAfterBuildSec);
-    const hash = await wallet.writeContract({
-      address: factory,
-      abi: kinLaunchFactoryAbi,
-      functionName: "createLaunch",
-      args: [
-        {
-          name: rec.name,
-          symbol: rec.symbol,
-          totalSupply: 1_000_000_000n * 10n ** 18n,
-          creatorAllocation: 0n,
-          fee: 10_000,
-          tickSpacing: 200,
-          startTick: 184_200,
-          tickLower: 69_000,
-          root: rec.allowlist.root,
-          evidenceHash: rec.allowlist.evidenceHash,
-          stats: rec.allowlist.stats,
-          windowStart,
-          windowEnd: windowStart + BigInt(rec.window.lengthSec),
-          lockDuration: BigInt(rec.window.lockSec),
-          salt: ("0x" + Buffer.from(slug.padEnd(32, "\0").slice(0, 32)).toString("hex")) as Hex,
-        },
-        false,
-      ],
-    });
-    const rcpt = await pub.waitForTransactionReceipt({ hash });
-    if (rcpt.status !== "success") throw new Error(`createLaunch reverted: ${hash}`);
-    const [ev] = parseEventLogs({ abi: kinLaunchFactoryAbi, logs: rcpt.logs, eventName: "LaunchCreated" });
-    const updated = rt.service.attachOnchain(slug, {
-      poolId: ev!.args.id as Hex,
-      token: ev!.args.token,
-      launchTx: hash,
-      windowStart: Number(windowStart),
-      windowEnd: Number(windowStart) + rec.window.lengthSec,
-      lockDuration: rec.window.lockSec,
-      rootVersion: rec.allowlist.version,
-    });
-    console.log(JSON.stringify(updated.onchain, null, 2));
+    console.log(JSON.stringify(await deployLaunch(rt.service, slug, onchainClients()), null, 2));
     break;
   }
   case "update-root": {
-    const rec = rt.service.get(slug);
-    if (!rec.onchain || !rec.allowlist) throw new Error("not deployed");
-    if (rec.allowlist.version === rec.onchain.rootVersion) throw new Error("onchain root is already the latest version");
-    const { wallet, pub, hook } = onchainClients();
-    const hash = await wallet.writeContract({
-      address: hook,
-      abi: kinHookAbi,
-      functionName: "updateAllowlist",
-      args: [rec.onchain.poolId, rec.allowlist.root, rec.allowlist.evidenceHash, rec.allowlist.stats],
-    });
-    const rcpt = await pub.waitForTransactionReceipt({ hash });
-    if (rcpt.status !== "success") throw new Error(`updateAllowlist reverted: ${hash}`);
-    rt.service.attachOnchain(slug, { ...rec.onchain, rootVersion: rec.allowlist.version });
-    console.log(`root updated to v${rec.allowlist.version}: ${hash}`);
+    console.log(`root updated: ${await updateRoot(rt.service, slug, onchainClients())}`);
     break;
   }
   case "finalize": {
-    const rec = rt.service.get(slug);
-    if (!rec.onchain) throw new Error("not deployed");
-    const { wallet, pub, hook } = onchainClients();
-    const hash = await wallet.writeContract({ address: hook, abi: kinHookAbi, functionName: "finalize", args: [rec.onchain.poolId] });
-    console.log(`finalize: ${(await pub.waitForTransactionReceipt({ hash })).status} ${hash}`);
+    console.log(`finalized: ${await finalizeLaunch(rt.service, slug, onchainClients())}`);
     break;
   }
   default:
