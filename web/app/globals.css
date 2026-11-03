@@ -205,3 +205,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* ---------- embed ---------- */
 .embed { max-width: 460px; margin: 0; padding: 0; }
 .embed .card { box-shadow: none; }
+
+/* ---------- fixes ---------- */
+.grid > .card, .steps > .card, .versus > .card, .grid > a.card { margin-top: 0; }
+.grid-2, .versus { align-items: start; }
+.compare td { white-space: normal; min-width: 120px; }
+.compare td:first-child { white-space: nowrap; min-width: 0; }
+.nav > :last-child { margin-left: auto; }

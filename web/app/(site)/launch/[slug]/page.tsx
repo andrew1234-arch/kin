@@ -164,7 +164,11 @@ function YourWallet({ launch, phase, now, onChange }: { launch: LaunchView; phas
           <p>
             <span className={`pill pill-${e.tier}`}>{e.tier === "fresh" ? "fresh pool" : e.tier}</span>{" "}
             {e.tier === "linked" && <span className="small muted">You share one cap with {status.entityMembers! - 1} other wallet(s) funded from the same source.</span>}
-            {e.tier === "fresh" && <span className="small muted">All {status.entityMembers} fresh wallets share one cap.</span>}
+            {e.tier === "fresh" && (
+              <span className="small muted">
+                {status.entityMembers! > 1 ? `All ${status.entityMembers} fresh wallets share one cap.` : "Fresh wallets share one pooled cap."}
+              </span>
+            )}
             {e.tier === "aged" && <span className="small muted">Your own entity and your own cap.</span>}
           </p>
           {launch.onchain ? <Onchain launch={launch} phase={phase} now={now} entityId={e.entityId as Hex} cap={BigInt(e.cap)} proof={e.proof as Hex[]} /> : <p className="small muted">Cap {eth(e.cap)} ETH. The launch isn&apos;t onchain yet.</p>}

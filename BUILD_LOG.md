@@ -4,6 +4,65 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D1 (continued) — Tue 3 Nov 2026, session 2
+
+**Tool:** AI coding agent (same cloud session). **Prompt:** "Continue the build, start building the rest asap",
+then "Continue". **Changed by hand:** nothing yet.
+
+The network is still closed (no Base RPC, no indexers, no secrets), so everything below was built and verified
+against a local anvil chain running the real Uniswap v4 PoolManager and the Kin contracts.
+
+### Built
+
+**Engine**
+- `scanToken()` (`src/scan/scan.ts`): one pipeline for Kin Scan, Gate A and Replay. Adds per-buy ETH spend
+  (tx.value), freshness (nonce before first buy), entity tiers as Kin would assign them, same-block buyers,
+  fund-to-buy time, share of early buys and of supply, and the counterfactual (`src/scan/counterfactual.ts`):
+  observed buys replayed in chain order through Kin's caps; buys paid in a token are reported as unknown.
+- Shared funding tracer (`src/cluster/funding.ts`) used by Scan and the allowlist builder.
+- Launch backend (`src/launch/`): file-backed store; registration by signed message, verified through an RPC client
+  so smart-contract wallets work too; allowlist build from nonces + funding trace + clustering; versioned allowlist
+  and evidence files (exact bytes); disputes (signed, closed at `windowStart`); admin resolution with an
+  "unlink" override applied on rebuild; per-wallet status and proofs.
+- Admin CLI (`src/launch/admin.ts` + `onchain.ts`): create, build, deploy (factory `createLaunch` with the root and
+  evidence hash), resolve, update-root, finalize.
+- Attack sandbox relayer (`src/sandbox/relayer.ts`): relayer → one funder → 20 fresh wallets; 20 signed
+  registrations; clustering from the real funding receipts; allowlist; a Kin launch and a plain launch; 20 buys on
+  each; exact revert reason decoded (`WrappedError` → `EntityCapExceeded`); leftover ETH swept back.
+- HTTP API (`src/server.ts`, Bun): scan (cached, rate limited), launches, sandbox runs with server-sent events and
+  a per-day budget, replay. `engine/Dockerfile` for a worker host.
+- Replay job (`src/replay/replay.ts`): sample file → raw scans + aggregates computed only from them.
+  `engine/replay/sample.json` is an empty template: the sample has not been chosen.
+- Local dev stack (`scripts/dev-local.sh` + `scripts/seed-local.ts`).
+
+**Web** (Next.js 16, wagmi 3, viem): `/` (pitch, latest sandbox result from the API), `/scan` (stat tiles, cluster
+map per entity, evidence with tx links, counterfactual bar, buyers table, method), `/sandbox` (run button, live
+event stream, Kin vs plain grids of 20), `/launch` and `/launch/[slug]` (phase bar, register, tier and cap, onchain
+entity spend, buy in the window, vault balance and claim, evidence file hash checked in the browser against the
+onchain commitment, disputes), `/receipt/[slug]` + `/embed/receipt/[slug]` (read from `KinHook.getReceipt`),
+`/replay` ("Not yet computed" until the job runs). Wallets: injected and Coinbase Wallet. (The Base Account
+connector was tried first; its SDK pulls a Coinbase CDP package with missing optional modules and broke the build.)
+
+### Verified (local anvil, 1 s blocks)
+
+| Check | Result |
+|---|---|
+| Sandbox via the API | Kin pool 10/20 landed, plain pool 20/20; next buy reverts `EntityCapExceeded(entity, 0.001 ETH, 0.0011 ETH)`; 16.4 s |
+| Scan via the API | 5 early buyers, 1 entity of 3 wallets linked through the shared funder, 2 fresh wallets unlinked |
+| Seeded launch | 11 wallets registered over HTTP; allowlist 4 entities (6 linked, 3 fresh); window buys: bundle 3 landed / 3 rejected at its shared cap, fresh pool 2 / 1; finalized receipt: 0.025 ETH, 4 entities, 7 wallets, largest entity 36.0% (= 0.009 / 0.025, checked by hand) |
+| Browser, non-deployer wallet | connect → register (signed) → dispute filed; then on a second launch: window buy 0.005 ETH → 493,964 tokens in the vault → claim after the lock → tokens in the wallet (checked onchain); receipt finalized by an unrelated caller |
+| Pages | every route screenshotted at 1280 px and 390 px; no horizontal overflow |
+| Tests | contracts 31 pass; engine 13 pass (incl. launch-backend integration on anvil); web build + typecheck pass |
+
+### Not done / still blocked
+
+- Gate A, Scan, Replay on Base mainnet; Gate B, sandbox and launches on Base Sepolia: need network access and keys.
+- The Alchemy and Blockscout transfer-history adapters are untested against the real services.
+- Base Verify tier: not built (its onchain interface couldn't be read from here). Cut to the roadmap per the brief.
+- Mainnet fallback deploy (P2): scripts support chain 8453; not deployed.
+
+---
+
 ## D1 — Tue 3 Nov 2026
 
 **Tool:** AI coding agent (cloud session, repo `andrew1234-arch/kin`, branch `ccr-1ff4e28c-is4t76`).

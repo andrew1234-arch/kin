@@ -14,33 +14,50 @@ lock ends. Then trading opens to everyone. This makes bundling expensive and vis
 
 ```
 contracts/   Foundry: KinHook, KinRouter, KinVault, KinLaunchFactory, tests, deploy + Gate B scripts
-engine/      Bun + TypeScript: cluster engine, allowlist builder, exclusion list, Gate A
-web/         Next.js: Scan, Sandbox, Launch, Receipt, Replay pages
+engine/      Bun + TypeScript: Kin Scan, cluster engine, allowlist builder, launch backend, sandbox relayer,
+             replay job, Gate A, HTTP API (src/server.ts)
+web/         Next.js: /, /scan, /sandbox, /launch, /launch/[slug], /receipt/[slug], /embed/receipt/[slug], /replay
 BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 ```
 
-## Status (3 Nov 2026)
+## Status
 
 | Piece | State |
 |---|---|
-| Contracts | Built; 31 tests pass (`cd contracts && forge test`) |
-| Gate B | Passes on a local chain; Base Sepolia run pending (network + funded key) |
-| Engine: clustering, allowlist, evidence | Built; 9 tests pass (`cd engine && bun test`) |
-| Gate A | Script ready and checked on a local chain; not yet run on Base |
-| Kin Scan, Sandbox, Launch UI, Receipt, Replay | Not built yet |
+| Contracts | 31 tests pass (`cd contracts && forge test`) |
+| Engine | 13 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
+| Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
+| Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |
+| Fairness Receipt page + embed | Built |
+| Replay job + page | Built; **not yet computed** (needs Base mainnet access and a chosen sample) |
+| Base Verify tier | Not built (interface unverified; on the roadmap) |
+| Gate A / Gate B on real networks | Pending: this build environment cannot reach Base |
 | Live URL | None yet |
 
 No number in this repository describes real-world usage or Base data until a job has computed it.
 
-## Run
+## Run everything locally
+
+Needs Foundry, Bun and Node.
 
 ```bash
 git clone --recursive https://github.com/andrew1234-arch/kin && cd kin
 (cd contracts && forge test)
 (cd engine && bun install && bun test)
-(cd web && npm install && npm run build)
-./contracts/script/gate-b-local.sh     # Gate B rehearsal on anvil
-./engine/scripts/gate-a-local.sh       # Gate A pipeline on anvil
+./engine/scripts/dev-local.sh      # anvil + contracts + engine API on :8787, seeded with demo launches
+# in another shell:
+cd web && npm install
+NEXT_PUBLIC_KIN_API=http://127.0.0.1:8787 NEXT_PUBLIC_CHAIN_ID=31337 NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545 \
+NEXT_PUBLIC_DEPLOYMENT_JSON="$(cat ../contracts/deployments/31337.json)" npm run dev
 ```
 
-See `contracts/README.md` for the Base Sepolia Gate B runbook and `engine/.env.example` for Gate A settings.
+## Go live (Base Sepolia + Base mainnet read-only)
+
+1. Fund a throwaway deployer with Base Sepolia ETH. Deploy: see `contracts/README.md` (Gate B runbook).
+2. Run the engine (`engine/Dockerfile`) on a worker host with the variables in `engine/.env.example`
+   (Base mainnet RPC + history provider for Scan; Base Sepolia RPC for launches and the sandbox relayer key).
+3. Deploy `web/` to Vercel with the variables in `web/.env.example`.
+4. Create a launch: `bun run src/launch/admin.ts create <slug> <name> <symbol> …`, then `build` and `deploy`
+   when registration closes, `resolve` / `build` / `update-root` for disputes, and `finalize` after the window.
+5. Replay: fill `engine/replay/sample.json` (selection method + tokens with their source), run `bun run replay replay/sample.json`.

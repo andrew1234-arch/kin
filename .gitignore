@@ -10,3 +10,4 @@ contracts/deployments/31337*.json
 engine/out/
 node_modules/
 .DS_Store
+engine/data/runtime/
