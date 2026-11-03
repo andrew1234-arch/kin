@@ -3,6 +3,17 @@ import { hex, Rpc } from "../data/rpc";
 
 export const TRANSFER_TOPIC = toEventSelector("Transfer(address,address,uint256)");
 
+export interface Buy {
+  tx: Hex;
+  block: bigint;
+  logIndex: number;
+  timestamp: number;
+  /** Token base units received. */
+  tokens: bigint;
+  /** Native ETH sent with the transaction (tx.value). 0 when paid in an ERC-20 (then unknown). */
+  ethIn: bigint;
+}
+
 export interface EarlyBuyer {
   wallet: Address;
   firstBuyBlock: bigint;
@@ -10,6 +21,7 @@ export interface EarlyBuyer {
   firstBuyTimestamp: number;
   /** Token base units received in buy transactions within the scanned range. */
   received: bigint;
+  buys: Buy[];
 }
 
 interface Log {
@@ -17,6 +29,7 @@ interface Log {
   data: Hex;
   blockNumber: Hex;
   transactionHash: Hex;
+  logIndex: Hex;
 }
 
 /** First block at which `token` has code (binary search on eth_getCode; needs an archive node). */
@@ -48,7 +61,8 @@ export async function findEarlyBuyers(
   opts: { maxBuyers: number; chunk: bigint; maxBlocks: bigint; latest: bigint },
 ): Promise<EarlyBuyer[]> {
   const buyers = new Map<string, EarlyBuyer>();
-  const txSender = new Map<string, string>();
+  const txInfo = new Map<string, { from: string; value: bigint }>();
+  const valueCounted = new Set<string>();
   const mintTxs = new Set<string>();
   const blockTime = new Map<bigint, number>();
   const end = minBig(fromBlock + opts.maxBlocks, opts.latest);
@@ -66,20 +80,17 @@ export async function findEarlyBuyers(
       const to = topicAddr(log.topics[2]!);
       const tx = log.transactionHash;
       if (mintTxs.has(tx)) continue;
-      let sender = txSender.get(tx);
-      if (!sender) {
-        const t = await rpc.call<{ from: string }>("eth_getTransactionByHash", [tx]);
-        sender = t.from.toLowerCase();
-        txSender.set(tx, sender);
+      let info = txInfo.get(tx);
+      if (!info) {
+        const t = await rpc.call<{ from: string; value: Hex }>("eth_getTransactionByHash", [tx]);
+        info = { from: t.from.toLowerCase(), value: BigInt(t.value) };
+        txInfo.set(tx, info);
       }
+      const sender = info.from;
       if (sender !== to.toLowerCase()) continue;
-      const amount = BigInt(log.data);
       const existing = buyers.get(sender);
-      if (existing) {
-        existing.received += amount;
-        continue;
-      }
-      if (buyers.size >= opts.maxBuyers) continue;
+      if (!existing && buyers.size >= opts.maxBuyers) continue;
+      const amount = BigInt(log.data);
       const bn = BigInt(log.blockNumber);
       let ts = blockTime.get(bn);
       if (ts === undefined) {
@@ -87,7 +98,23 @@ export async function findEarlyBuyers(
         ts = Number(BigInt(b.timestamp));
         blockTime.set(bn, ts);
       }
-      buyers.set(sender, { wallet: getAddress(to), firstBuyBlock: bn, firstBuyTx: tx, firstBuyTimestamp: ts, received: amount });
+      // tx.value is counted once per transaction even if it emitted several transfers to the buyer.
+      const ethIn = valueCounted.has(tx) ? 0n : info.value;
+      valueCounted.add(tx);
+      const buy: Buy = { tx, block: bn, logIndex: Number(BigInt(log.logIndex)), timestamp: ts, tokens: amount, ethIn };
+      if (existing) {
+        existing.received += amount;
+        existing.buys.push(buy);
+        continue;
+      }
+      buyers.set(sender, {
+        wallet: getAddress(to),
+        firstBuyBlock: bn,
+        firstBuyTx: tx,
+        firstBuyTimestamp: ts,
+        received: amount,
+        buys: [buy],
+      });
     }
   }
   return [...buyers.values()].sort((a, b) => Number(a.firstBuyBlock - b.firstBuyBlock));
