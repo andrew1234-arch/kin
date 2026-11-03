@@ -1,8 +1,9 @@
 import { decodeFunctionResult, encodeFunctionData, erc20Abi, getAddress, type Address, type Hex } from "viem";
 import { clusterByFunding } from "../cluster/cluster";
+import { traceFunding } from "../cluster/funding";
 import type { HistoryProvider } from "../data/history";
 import { hex, Rpc } from "../data/rpc";
-import type { FundingEdge, Link } from "../types";
+import type { Link } from "../types";
 import { simulateKin, type KinCaps, type SimTier } from "./counterfactual";
 import { findDeployBlock, findEarlyBuyers, measureBlockTime, type EarlyBuyer } from "./earlyBuyers";
 
@@ -121,31 +122,11 @@ export async function scanToken(
   );
 
   // Funding: hop 1 (who funded each buyer before its first buy), hop 2 (who funded those funders).
-  const edges: FundingEdge[] = [];
-  const hop1 = await Promise.all(
-    buyers.map((b) => history.incomingNative(b.wallet, floor0(b.firstBuyBlock - windowBlocks), b.firstBuyBlock, 10)),
+  const { edges, lastFundedAt: fundedAt } = await traceFunding(
+    history,
+    buyers.map((b) => ({ wallet: b.wallet, beforeBlock: b.firstBuyBlock })),
+    { windowBlocks, excluded: opts.excluded, maxHops: opts.maxHops },
   );
-  const buyerSet = new Set(buyers.map((b) => b.wallet.toLowerCase()));
-  const funderFirst = new Map<string, bigint>();
-  const fundedAt = new Map<string, number>(); // buyer -> latest funding timestamp before first buy
-  hop1.forEach((list, i) => {
-    const b = buyers[i]!;
-    for (const t of list) {
-      edges.push({ ...t, hop: 1 });
-      const prevTs = fundedAt.get(b.wallet.toLowerCase());
-      if (prevTs === undefined || t.timestamp > prevTs) fundedAt.set(b.wallet.toLowerCase(), t.timestamp);
-      const f = t.from.toLowerCase();
-      if (opts.excluded.has(f) || buyerSet.has(f)) continue;
-      const prev = funderFirst.get(f);
-      if (prev === undefined || t.blockNumber < prev) funderFirst.set(f, t.blockNumber);
-    }
-  });
-  if (opts.maxHops === 2) {
-    const hop2 = await Promise.all(
-      [...funderFirst].map(([f, bn]) => history.incomingNative(getAddress(f), floor0(bn - windowBlocks), bn, 10)),
-    );
-    hop2.forEach((list) => list.forEach((t) => edges.push({ ...t, hop: 2 })));
-  }
 
   const clusters = clusterByFunding(
     buyers.map((b) => b.wallet),
