@@ -33,9 +33,10 @@ import { dataDir, launchRuntime } from "./runtime";
 import { sandboxConfigFromEnv } from "./sandbox/config";
 import { runSandbox, type SandboxEvent, type SandboxResult } from "./sandbox/relayer";
 import { scanToken, type ScanResult } from "./scan/scan";
+import { envNum, envStr } from "./env";
 
-const PORT = Number(process.env.PORT ?? 8787);
-const CORS = process.env.CORS_ORIGIN ?? "*";
+const PORT = envNum("PORT", 8787, { min: 1, integer: true });
+const CORS = envStr("CORS_ORIGIN") ?? "*";
 const launches = launchRuntime();
 
 // ------------------------------------------------------------------ helpers
@@ -60,7 +61,7 @@ const ipOf = (req: Request, server: { requestIP(r: Request): { address: string }
 
 const scanCache = new Map<string, { at: number; result: ScanResult }>();
 const scanInflight = new Map<string, Promise<ScanResult>>();
-const SCAN_TTL_MS = Number(process.env.SCAN_CACHE_SECONDS ?? 600) * 1000;
+const SCAN_TTL_MS = envNum("SCAN_CACHE_SECONDS", 600, { min: 0 }) * 1000;
 const scanDir = join(dataDir(), "scans");
 mkdirSync(scanDir, { recursive: true });
 
@@ -96,8 +97,8 @@ const runs = new Map<string, Run>();
 const sandboxDir = join(dataDir(), "sandbox");
 mkdirSync(sandboxDir, { recursive: true });
 let activeRun: string | null = null;
-const SANDBOX_MAX_PER_DAY = Number(process.env.SANDBOX_MAX_RUNS_PER_DAY ?? 40);
-const SANDBOX_IP_COOLDOWN_MS = Number(process.env.SANDBOX_IP_COOLDOWN_SECONDS ?? 120) * 1000;
+const SANDBOX_MAX_PER_DAY = envNum("SANDBOX_MAX_RUNS_PER_DAY", 40, { min: 0, integer: true });
+const SANDBOX_IP_COOLDOWN_MS = envNum("SANDBOX_IP_COOLDOWN_SECONDS", 120, { min: 0 }) * 1000;
 
 function startRun(): Run {
   const cfg = sandboxConfigFromEnv();
@@ -189,15 +190,15 @@ const server = Bun.serve({
       if (parts[0] === "health") {
         return json({
           ok: true,
-          scan: !!process.env.BASE_RPC_URL,
-          launches: !!process.env.LAUNCH_RPC_URL,
-          sandbox: !!process.env.SANDBOX_RPC_URL && !!process.env.SANDBOX_RELAYER_KEY,
+          scan: !!envStr("BASE_RPC_URL"),
+          launches: !!envStr("LAUNCH_RPC_URL"),
+          sandbox: !!envStr("SANDBOX_RPC_URL") && !!envStr("SANDBOX_RELAYER_KEY"),
         });
       }
 
       // ---- scan
       if (parts[0] === "scan" && parts[1] && req.method === "GET") {
-        if (!process.env.BASE_RPC_URL) return fail(503, "Scan is not configured on this server (BASE_RPC_URL)");
+        if (!envStr("BASE_RPC_URL")) return fail(503, "Scan is not configured on this server (BASE_RPC_URL)");
         if (!isAddress(parts[1])) return fail(400, "not a token address");
         if (rateLimited(`scan:${ip}`, 10, 60_000)) return fail(429, "too many scans; try again in a minute");
         const cap = url.searchParams.get("cap") ?? undefined;
@@ -244,7 +245,7 @@ const server = Bun.serve({
       if (parts[0] === "sandbox") {
         if (parts[1] === "latest") return json(latestRun());
         if (parts[1] === "runs" && !parts[2] && req.method === "POST") {
-          if (!process.env.SANDBOX_RPC_URL || !process.env.SANDBOX_RELAYER_KEY) return fail(503, "Sandbox is not configured on this server");
+          if (!envStr("SANDBOX_RPC_URL") || !envStr("SANDBOX_RELAYER_KEY")) return fail(503, "Sandbox is not configured on this server");
           if (activeRun) return fail(429, "a run is in progress; watch it instead", { runningId: activeRun });
           if (rateLimited(`sbx:${ip}`, 1, SANDBOX_IP_COOLDOWN_MS)) return fail(429, "one run per visitor every few minutes");
           if (runsToday() >= SANDBOX_MAX_PER_DAY) return fail(429, "daily run budget used; the latest run is shown instead");

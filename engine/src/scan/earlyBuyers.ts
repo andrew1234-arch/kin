@@ -32,11 +32,19 @@ interface Log {
   logIndex: Hex;
 }
 
-/** First block at which `token` has code (binary search on eth_getCode; needs an archive node). */
-export async function findDeployBlock(rpc: Rpc, token: Address, latest: bigint): Promise<bigint> {
+/**
+ * First block at which `token` has code (binary search on eth_getCode; needs an archive node).
+ * With a `hint` (e.g. the block of the launchpad's creation event) it costs two calls: code at the
+ * hint and none just before it. A hint that fails that check falls back to the search.
+ */
+export async function findDeployBlock(rpc: Rpc, token: Address, latest: bigint, hint?: bigint): Promise<bigint> {
   let lo = 0n;
   let hi = latest;
   const hasCode = async (b: bigint) => (await rpc.call<Hex>("eth_getCode", [token, hex(b)])) !== "0x";
+  if (hint !== undefined && hint > 0n && hint <= latest) {
+    const [at, before] = await Promise.all([hasCode(hint), hasCode(hint - 1n)]);
+    if (at && !before) return hint;
+  }
   if (!(await hasCode(hi))) throw new Error(`${token} has no code at the latest block`);
   while (lo < hi) {
     const mid = (lo + hi) / 2n;

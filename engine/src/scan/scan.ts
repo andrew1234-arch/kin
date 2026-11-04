@@ -88,11 +88,45 @@ export interface ScanResult {
   cost: { elapsedMs: number; calls: Record<string, number>; totalCalls: number };
 }
 
+/**
+ * Every parameter that changes a scan's result. Two scans with equal params are interchangeable,
+ * which is how the replay safely reuses Gate A's scans instead of paying for them twice.
+ */
+export function methodParams(opts: ScanOptions, historyProvider: string) {
+  return {
+    earlyBuyerRule: "Transfer to the transaction sender, excluding the token's creation transaction(s)",
+    earlyBuyers: opts.earlyBuyers,
+    fundingWindowHours: opts.fundingWindowHours,
+    maxHops: opts.maxHops,
+    maxScanBlocks: opts.maxScanBlocks.toString(),
+    linkRule: "shared native-ETH funder within maxHops before the first buy; excluded addresses never link",
+    freshRule: `nonce before first buy <= ${opts.freshMaxNonce}`,
+    caps: { capWei: opts.caps.capWei.toString(), freshPoolCapWei: opts.caps.freshPoolCapWei.toString() },
+    counterfactualRule: "replay buys in chain order; a buy lands if its entity's cumulative ETH stays within the cap",
+    exclusions: opts.exclusionsSource,
+    historyProvider,
+  };
+}
+
+/** True if `scan` was produced with exactly these parameters (block time is measured, not a parameter). */
+export function sameMethod(scan: ScanResult, opts: ScanOptions, historyProvider: string): boolean {
+  const { measuredBlockTimeSec: _t, ...had } = scan.method as Record<string, unknown>;
+  return canonical(had) === canonical(methodParams(opts, historyProvider));
+}
+
+const canonical = (v: unknown): string =>
+  JSON.stringify(v, (_k, x) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, (x as Record<string, unknown>)[k]]))
+      : x,
+  );
+
 export async function scanToken(
   rpc: Rpc,
   history: HistoryProvider,
   tokenIn: string,
   opts: ScanOptions,
+  hints: { deployBlock?: bigint } = {},
 ): Promise<ScanResult> {
   const token = getAddress(tokenIn);
   const t0 = performance.now();
@@ -106,7 +140,7 @@ export async function scanToken(
   const windowBlocks = blockTime > 0 ? BigInt(Math.ceil((opts.fundingWindowHours * 3600) / blockTime)) : latest;
   const floor0 = (b: bigint) => (b < 0n ? 0n : b);
 
-  const deployBlock = await findDeployBlock(rpc, token, latest);
+  const deployBlock = await findDeployBlock(rpc, token, latest, hints.deployBlock);
   const buyers = await findEarlyBuyers(rpc, token, deployBlock, {
     maxBuyers: opts.earlyBuyers,
     chunk: opts.logsChunk,
@@ -194,19 +228,7 @@ export async function scanToken(
     deployBlock: deployBlock.toString(),
     latestBlock: latest.toString(),
     scannedAt: new Date().toISOString(),
-    method: {
-      earlyBuyerRule: "Transfer to the transaction sender, excluding the token's creation transaction(s)",
-      earlyBuyers: opts.earlyBuyers,
-      fundingWindowHours: opts.fundingWindowHours,
-      measuredBlockTimeSec: blockTime,
-      maxHops: opts.maxHops,
-      linkRule: "shared native-ETH funder within maxHops before the first buy; excluded addresses never link",
-      freshRule: `nonce before first buy <= ${opts.freshMaxNonce}`,
-      caps: { capWei: opts.caps.capWei.toString(), freshPoolCapWei: opts.caps.freshPoolCapWei.toString() },
-      counterfactualRule: "replay buys in chain order; a buy lands if its entity's cumulative ETH stays within the cap",
-      exclusions: opts.exclusionsSource,
-      historyProvider: history.name,
-    },
+    method: { ...methodParams(opts, history.name), measuredBlockTimeSec: blockTime },
     buyers: buyers.map((b, i) => {
       const e = entityOf.get(b.wallet.toLowerCase())!;
       return {

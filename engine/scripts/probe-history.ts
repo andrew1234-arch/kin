@@ -25,8 +25,9 @@ if (rows.length === 0) {
 }
 const r = rows[0]!;
 for (const [k, v] of Object.entries(r)) console.log(`  ${k}: ${typeof v === "bigint" ? v.toString() : v}`);
-if (!r.txHash.startsWith("0x") || r.blockNumber <= 0n || r.timestamp <= 0) {
-  console.error("Parsed row is incomplete (hash, block or timestamp missing).");
+// Written as !(x > 0) so NaN (what a renamed or missing field produces) fails too.
+if (!/^0x[0-9a-fA-F]{64}$/.test(r.txHash) || !(r.blockNumber > 0n) || !(r.timestamp > 0) || typeof r.value !== "bigint") {
+  console.error("Parsed row is incomplete or malformed (hash, block, timestamp or value).");
   process.exit(1);
 }
 console.log("history provider OK");

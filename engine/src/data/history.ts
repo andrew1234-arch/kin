@@ -1,5 +1,6 @@
 import { getAddress, type Address, type Hex } from "viem";
 import { hex, Rpc } from "./rpc";
+import { envRequired, envStr } from "../env";
 
 /**
  * Transfer-history access: "who sent native ETH to this address, up to block X?".
@@ -133,14 +134,12 @@ export class BlockscoutHistory implements HistoryProvider {
   }
 }
 
-export function historyFromEnv(rpc: Rpc): HistoryProvider {
-  const p = process.env.HISTORY_PROVIDER ?? "alchemy";
+export function historyFromEnv(rpc: Rpc, provider?: string): HistoryProvider {
+  const p = provider ?? envStr("HISTORY_PROVIDER") ?? "alchemy";
   if (p === "alchemy") return new AlchemyHistory(rpc);
   if (p === "rpc-scan") return new RpcScanHistory(rpc);
   if (p === "blockscout") {
-    const url = process.env.BLOCKSCOUT_API_URL;
-    if (!url) throw new Error("BLOCKSCOUT_API_URL is not set");
-    return new BlockscoutHistory(url);
+    return new BlockscoutHistory(envRequired("BLOCKSCOUT_API_URL"));
   }
   throw new Error(`unknown HISTORY_PROVIDER ${p}`);
 }

@@ -38,6 +38,11 @@ forge script script/GateB.s.sol:GateBCreateLaunch --rpc-url base_sepolia --broad
 forge script script/GateB.s.sol:GateBSwap --rpc-url base_sepolia --broadcast --slow
 ```
 
+Or run all of it, with onchain verification of every step, via `engine/scripts/real-sepolia.sh`.
+Note: Foundry 1.7.1's `forge script` can print `Error: script failed` and still exit 0, so never gate on its exit
+code; `real-sepolia.sh` checks the chain instead (contract code after deploy, the factory's `launchCount`, the
+hook's `entitySpent` and the vault's `owed`).
+
 `GateBSwap` (a) simulates a swap through Uniswap's PoolSwapTest router on Base Sepolia, carrying hook data that
 claims to be the allowlisted buyer, and requires it to revert with `KinHook.UntrustedRouter`; then (b) broadcasts
 one real buy through KinRouter and checks that the entity spend was recorded and the tokens were vaulted.

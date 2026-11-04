@@ -1,32 +1,39 @@
 #!/usr/bin/env bash
 # Real Base mainnet run, read-only: provider probe -> replay sample selection -> Gate A on 3 sampled
-# launches -> replay over the whole sample. Results are copied to reports/ for publishing.
+# launches -> replay over the whole sample (reusing Gate A's scans). Results go to reports/.
 #
-# Needs (engine/.env or the environment): BASE_RPC_URL (archive), HISTORY_PROVIDER (+ BLOCKSCOUT_API_URL),
-# optionally GATE_A_PRICING. Arguments: [N=50] [RANGE_DAYS=7] [SETTLE_HOURS=24]
+# Settings come from the environment, then engine/.env (the environment wins; blank values are unset):
+#   BASE_RPC_URL (archive), HISTORY_PROVIDER (+ BLOCKSCOUT_API_URL), optional GATE_A_PRICING.
+# Arguments: [N=50] [RANGE_DAYS=7] [SETTLE_HOURS=24]
 set -euo pipefail
-cd "$(dirname "$0")/.."
-[ -f .env ] && set -a && . ./.env && set +a
-: "${BASE_RPC_URL:?set BASE_RPC_URL}"
+ENGINE="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$ENGINE/.." && pwd)"
+cd "$ENGINE"
+eval "$(node scripts/load-env.mjs "$ENGINE/.env")"
+: "${BASE_RPC_URL:?set BASE_RPC_URL (environment or engine/.env)}"
 N=${1:-50}; DAYS=${2:-7}; SETTLE=${3:-24}
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-mkdir -p ../reports
+REPORTS="$ROOT/reports"
+mkdir -p "$REPORTS"
+SAMPLE="$REPORTS/replay-sample-${STAMP}.json"
+GATE_A="$REPORTS/gate-a-${STAMP}.json"
+REPLAY="$REPORTS/replay-${STAMP}.json"
 
 echo "== 1. history provider probe"
 bun run scripts/probe-history.ts
 
 echo "== 2. replay sample: Clanker v4, ${DAYS} days ending ${SETTLE} h ago, ${N} evenly spaced"
-bun run src/replay/selectSample.ts "$N" "$DAYS" "$SETTLE" > replay/sample.json
-cp replay/sample.json "../reports/replay-sample-${STAMP}.json"
+# Written atomically by the selector; on failure nothing is written.
+bun run src/replay/selectSample.ts "$N" "$DAYS" "$SETTLE" --out "$SAMPLE"
+cp "$SAMPLE" replay/sample.json
 
 echo "== 3. Gate A on the first 3 sampled launches"
-mapfile -t TOKENS < <(jq -r '.tokens[0:3][].address' replay/sample.json)
-bun run src/gates/gateA.ts "${TOKENS[@]}"
-cp "$(ls -t out/gate-a-*.json | head -1)" "../reports/gate-a-${STAMP}.json"
+# A failing token is recorded in the report; the run continues to the replay either way.
+bun run src/gates/gateA.ts --sample "$SAMPLE" --count 3 --out "$GATE_A" || echo "Gate A scanned no token; see $GATE_A"
 
-echo "== 4. replay over the whole sample"
-export DATA_DIR=${DATA_DIR:-$(pwd)/data/runtime}
-bun run src/replay/replay.ts replay/sample.json
-cp "$DATA_DIR/replay/latest.json" "../reports/replay-${STAMP}.json"
-jq '.aggregates' "../reports/replay-${STAMP}.json"
-echo "reports written to reports/ (sample, gate A, replay) — stamp ${STAMP}"
+echo "== 4. replay over the whole sample (reusing Gate A's scans made with the same parameters)"
+REUSE=()
+[ -f "$GATE_A" ] && REUSE=(--reuse "$GATE_A")
+bun run src/replay/replay.ts "$SAMPLE" ${REUSE[@]+"${REUSE[@]}"} --out "$REPLAY"
+jq '.aggregates' "$REPLAY"
+echo "reports: $SAMPLE, $GATE_A, $REPLAY"

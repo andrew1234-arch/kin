@@ -2,6 +2,8 @@
  * Minimal JSON-RPC client with per-method call counting, so Gate A can report exactly how many
  * requests indexing a token takes. Endpoints come from the environment only.
  */
+import { envNum, envRequired } from "../env";
+
 export class Rpc {
   readonly calls = new Map<string, number>();
   private inflight = 0;
@@ -13,9 +15,7 @@ export class Rpc {
   ) {}
 
   static fromEnv(name = "BASE_RPC_URL"): Rpc {
-    const url = process.env[name];
-    if (!url) throw new Error(`${name} is not set (see engine/.env.example)`);
-    return new Rpc(url, { concurrency: Number(process.env.RPC_CONCURRENCY ?? 8) });
+    return new Rpc(envRequired(name), { concurrency: envNum("RPC_CONCURRENCY", 8, { min: 1, integer: true }) });
   }
 
   totalCalls(): number {

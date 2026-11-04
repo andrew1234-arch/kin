@@ -4,6 +4,47 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D2 — Wed 4 Nov 2026: code-review fixes
+
+**Tool:** AI coding agent, `/code-review` (15 findings on the replay selector, probe and real-network scripts), then
+"fix all of them". **Changed by hand:** nothing yet.
+
+**Correction to session 3:** that entry said the selector was "unit-tested with real-format logs". The test built
+its logs with the same ABI it decoded, so it could not catch a wrong event signature. Fixed below.
+
+Fixes:
+- Selector fails loudly on zero creation events (the sign of a wrong factory address or signature) and on fewer
+  WETH-paired launches than N; validates N / days / settle hours; refuses a non-positive chunk size; fetches
+  log chunks in parallel (in chain order); writes its output atomically with `--out`.
+- The `TokenCreated` definition is now checked field by field against a copy extracted mechanically from
+  Clanker's SDK file (`engine/src/replay/clanker-token-created.abi.json`), and its topic0 is pinned in the test.
+  It was also decoded from events emitted by Solidity (below). The real check is still the first live run, which
+  now fails if no events match.
+- One env helper (`engine/src/env.ts`): blank values are unset, malformed numbers fail. Every engine env read uses
+  it (this also fixes a blank `DATA_DIR` sending launch state to a relative path, and a blank `LOGS_CHUNK` looping).
+- Scripts load `.env` with `engine/scripts/load-env.mjs` (dotenv parsed in Node, never run as shell; the caller's
+  environment wins); no bash-4-only features; Gate A failures no longer abort the replay; Gate A and replay take
+  explicit `--out` paths; the replay reuses Gate A's scans when every parameter matches; scans use the sample's
+  creation block as a verified deploy-block hint (2 `eth_getCode` calls instead of a binary search).
+- `real-sepolia.sh` trusts a recorded deployment only if every contract has code, and verifies Gate B onchain.
+  Found while testing: Foundry 1.7.1 `forge script` exits 0 even when it prints "Error: script failed".
+- Probe rejects NaN timestamps and malformed rows.
+- A test caught a bug in the new argument parser (it dropped the first argument when `--out` was absent); fixed.
+
+Checked (all local; Base itself is still unreachable from this environment):
+- engine 26 tests, contracts 31, web build pass;
+- Gate A → replay locally: replay reused Gate A's scan; with the creation-block hint, `eth_getCode` calls went 5 → 2;
+  a token with no code was recorded as a failure while the rest continued;
+- `real-sepolia.sh` on a local chain posing as 84532 with a planted deployment file pointing at nothing: detected,
+  moved aside, redeployed, deployment verified onchain, then launch creation correctly reported as failed (no
+  Uniswap PoolManager on that chain). Gate B's onchain checks verified separately on a working local chain
+  (launchCount 0 → 1, entity spend 0.0005 ETH, tokens vaulted);
+- `real-mainnet.sh`, unchanged, on a local chain posing as Base (8453), with a stand-in at Clanker's factory address
+  emitting `TokenCreated` from Solidity: probe OK → selector decoded the events and kept the 2 WETH-paired of 3 →
+  Gate A scanned both → replay reused both → reports written. A failed selection left no file behind.
+
+---
+
 ## D1 (continued) — Tue 3 Nov 2026, session 3
 
 **Tool:** AI coding agent. **Prompt:** "Test it against real services and do the replay samples".

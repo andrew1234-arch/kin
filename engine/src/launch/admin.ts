@@ -13,6 +13,7 @@
 import { parseEther, type Hex } from "viem";
 import { launchRuntime } from "../runtime";
 import { adminClients, deployLaunch, finalizeLaunch, updateRoot } from "./onchain";
+import { envStr } from "../env";
 
 const [cmd, slug, ...rest] = process.argv.slice(2);
 if (!cmd || !slug) {
@@ -23,8 +24,8 @@ const rt = launchRuntime();
 const now = () => Math.floor(Date.now() / 1000);
 
 function onchainClients() {
-  const adminKey = process.env.LAUNCH_ADMIN_KEY as Hex | undefined;
-  const deploymentPath = process.env.LAUNCH_DEPLOYMENT;
+  const adminKey = envStr("LAUNCH_ADMIN_KEY") as Hex | undefined;
+  const deploymentPath = envStr("LAUNCH_DEPLOYMENT");
   if (!adminKey || !deploymentPath || !rt.rpcUrl) throw new Error("LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT and LAUNCH_RPC_URL are required");
   return adminClients({ rpcUrl: rt.rpcUrl, chainId: rt.chainId, adminKey, deploymentPath });
 }

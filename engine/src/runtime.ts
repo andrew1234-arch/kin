@@ -6,6 +6,7 @@ import { Rpc } from "./data/rpc";
 import { LaunchService } from "./launch/service";
 import { LaunchStore } from "./launch/store";
 import { chainFor } from "./sandbox/relayer";
+import { envNum, envStr } from "./env";
 
 /**
  * Wiring shared by the API server and the admin CLI.
@@ -15,12 +16,12 @@ import { chainFor } from "./sandbox/relayer";
  *   LAUNCH_HISTORY_PROVIDER  transfer-history provider for that chain (alchemy | blockscout | rpc-scan)
  */
 export function dataDir() {
-  return process.env.DATA_DIR ?? join(import.meta.dir, "../data/runtime");
+  return envStr("DATA_DIR") ?? join(import.meta.dir, "../data/runtime");
 }
 
 export function launchRuntime() {
-  const rpcUrl = process.env.LAUNCH_RPC_URL;
-  const chainId = Number(process.env.LAUNCH_CHAIN_ID ?? 84532);
+  const rpcUrl = envStr("LAUNCH_RPC_URL");
+  const chainId = envNum("LAUNCH_CHAIN_ID", 84532, { min: 1, integer: true });
   const scanOpts = scanOptionsFromEnv();
   const pub: PublicClient | null = rpcUrl
     ? (createPublicClient({ chain: chainFor(chainId, rpcUrl), transport: http(rpcUrl) }) as PublicClient)
@@ -36,15 +37,7 @@ export function launchRuntime() {
       if (!rpcUrl) throw new Error("LAUNCH_RPC_URL is not set");
       return new Rpc(rpcUrl);
     },
-    history: (rpc) => {
-      const prev = process.env.HISTORY_PROVIDER;
-      process.env.HISTORY_PROVIDER = process.env.LAUNCH_HISTORY_PROVIDER ?? prev;
-      try {
-        return historyFromEnv(rpc);
-      } finally {
-        process.env.HISTORY_PROVIDER = prev;
-      }
-    },
+    history: (rpc) => historyFromEnv(rpc, envStr("LAUNCH_HISTORY_PROVIDER")),
     excluded: scanOpts.excluded,
     exclusionsSource: scanOpts.exclusionsSource,
     fundingWindowHours: scanOpts.fundingWindowHours,
