@@ -134,12 +134,16 @@ export class BlockscoutHistory implements HistoryProvider {
   }
 }
 
-export function historyFromEnv(rpc: Rpc, provider?: string): HistoryProvider {
+/**
+ * The transfer-history provider for `rpc`'s chain. Callers for a chain other than Base mainnet must pass
+ * that chain's own Blockscout URL: BLOCKSCOUT_API_URL is the Base mainnet instance.
+ */
+export function historyFromEnv(rpc: Rpc, provider?: string, blockscoutUrl?: string): HistoryProvider {
   const p = provider ?? envStr("HISTORY_PROVIDER") ?? "alchemy";
   if (p === "alchemy") return new AlchemyHistory(rpc);
   if (p === "rpc-scan") return new RpcScanHistory(rpc);
   if (p === "blockscout") {
-    return new BlockscoutHistory(envRequired("BLOCKSCOUT_API_URL"));
+    return new BlockscoutHistory(blockscoutUrl ?? envRequired("BLOCKSCOUT_API_URL"));
   }
   throw new Error(`unknown HISTORY_PROVIDER ${p}`);
 }

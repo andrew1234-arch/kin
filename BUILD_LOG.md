@@ -4,6 +4,35 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D2 — Wed 4 Nov 2026: second code-review round
+
+**Tool:** same as above (a second `/code-review` pass, 15 findings, then "fix all of them").
+**Changed by hand:** commit authorship moved to the owner's account (history rewritten, no code changed).
+
+Fixes:
+- `.env` loading for the run scripts now uses `node:util` `parseEnv` (Node or Bun), so quoted values with inline
+  comments parse like Node/Bun do; a blank `KEY=` never hides a value set later; a loader failure (no Node or Bun,
+  unreadable file) stops the script (`engine/scripts/run-env.sh`).
+- Replay: `latest.json` (served by `/replay`) is written only with `--publish` and only if at least one token was
+  scanned; the output directory is created and checked before scanning; the RPC must serve the sample's chain;
+  scans are reused only from the same chain; exit codes 0/1/2/3 distinguish success, nothing scanned, bad settings,
+  unexpected errors.
+- Gate A no longer uses the creation-block hint, so its call counts are what an unhinted `/scan` costs; strict
+  flags; a bad pricing file or setting stops the run (exit 2) instead of being reported as "no token scanned".
+- `real-sepolia.sh`: an RPC error while checking the recorded deployment stops the run instead of counting as
+  "has code" or triggering a redeploy.
+- The probe requires a positive transfer value (providers return non-zero transfers only).
+- Launches with Blockscout use `LAUNCH_BLOCKSCOUT_API_URL` (Base Sepolia), never the mainnet instance.
+- The sample selector rejects extra positional arguments (a forgotten `--out`).
+- Gate A and the replay share `engine/src/replay/sample.ts` and no longer load the launch/sandbox runtime.
+
+Checked: engine 34 tests, contracts 31, web build. Locally: Gate A on a hinted sample still makes 5 `eth_getCode`
+calls; a replay where every token fails exits 1 and leaves `latest.json` untouched; a wrong-chain sample and a
+missing pricing file exit 2 with nothing written; a scan from another chain is not reused; `real-sepolia.sh` with
+a stubbed failing `cast code` stops without redeploying; `real-mainnet.sh` passes end to end on a chain posing as Base.
+
+---
+
 ## D2 — Wed 4 Nov 2026: code-review fixes
 
 **Tool:** AI coding agent, `/code-review` (15 findings on the replay selector, probe and real-network scripts), then

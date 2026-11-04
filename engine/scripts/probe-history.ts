@@ -25,8 +25,9 @@ if (rows.length === 0) {
 }
 const r = rows[0]!;
 for (const [k, v] of Object.entries(r)) console.log(`  ${k}: ${typeof v === "bigint" ? v.toString() : v}`);
-// Written as !(x > 0) so NaN (what a renamed or missing field produces) fails too.
-if (!/^0x[0-9a-fA-F]{64}$/.test(r.txHash) || !(r.blockNumber > 0n) || !(r.timestamp > 0) || typeof r.value !== "bigint") {
+// Written as !(x > 0) so NaN (what a renamed or missing field produces) fails too. Value must be > 0:
+// every provider is asked for non-zero transfers only, so 0 means the value field wasn't read.
+if (!/^0x[0-9a-fA-F]{64}$/.test(r.txHash) || !(r.blockNumber > 0n) || !(r.timestamp > 0) || !(r.value > 0n)) {
   console.error("Parsed row is incomplete or malformed (hash, block, timestamp or value).");
   process.exit(1);
 }

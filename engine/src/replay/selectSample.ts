@@ -17,7 +17,7 @@ import { envPositiveBigInt } from "../env";
 import { hex, Rpc } from "../data/rpc";
 import { measureBlockTime } from "../scan/earlyBuyers";
 import { CLANKER_SOURCE, CLANKER_V4_FACTORY_BASE, TOKEN_CREATED, WETH_BASE } from "./clanker";
-import type { ReplaySample } from "./replay";
+import { flagValue, type ReplaySample } from "./sample";
 
 interface Log {
   topics: Hex[];
@@ -145,12 +145,17 @@ export async function selectSample(
   };
 }
 
-/** Parse "[N] [DAYS] [SETTLE] [--out path]" strictly. */
+/** Parse "[N] [DAYS] [SETTLE] [--out path]" strictly: unknown options and extra arguments are errors. */
 export function parseArgs(argv: string[]) {
-  const out = argv.indexOf("--out");
-  const path = out >= 0 ? argv[out + 1] : undefined;
-  if (out >= 0 && !path) throw new Error("--out needs a path");
-  const pos = out >= 0 ? argv.filter((_, i) => i !== out && i !== out + 1) : [...argv];
+  let path: string | undefined;
+  const pos: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--out") path = flagValue(argv, i++, a);
+    else if (a.startsWith("--")) throw new Error(`unknown option ${a}`);
+    else pos.push(a);
+  }
+  if (pos.length > 3) throw new Error(`too many arguments: ${pos.slice(3).join(" ")} (use --out <path> for the output file)`);
   const num = (s: string | undefined, def: number, name: string) => {
     if (s === undefined) return def;
     if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`${name} must be a number, got "${s}"`);

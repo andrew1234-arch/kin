@@ -7,7 +7,8 @@
 #   SANDBOX_RELAYER_KEY (funded; defaults to the deployer key), optional SANDBOX_EXPLORER_URL.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-eval "$(node "$ROOT/engine/scripts/load-env.mjs" "$ROOT/contracts/.env" "$ROOT/engine/.env")"
+. "$ROOT/engine/scripts/run-env.sh"
+load_env "$ROOT/contracts/.env" "$ROOT/engine/.env"
 : "${BASE_SEPOLIA_RPC_URL:?set BASE_SEPOLIA_RPC_URL}" "${DEPLOYER_PRIVATE_KEY:?set DEPLOYER_PRIVATE_KEY}"
 RPC="$BASE_SEPOLIA_RPC_URL"
 [ "$(cast chain-id --rpc-url "$RPC")" = "84532" ] || { echo "BASE_SEPOLIA_RPC_URL is not Base Sepolia"; exit 1; }
@@ -17,14 +18,24 @@ cd "$ROOT/contracts"
 DEP=deployments/84532.json
 
 # A deployment file is trusted only if every recorded contract has code onchain. forge writes the file
-# during simulation, so a failed broadcast can leave one behind that points at nothing.
+# during simulation, so a failed broadcast can leave one behind that points at nothing. An RPC error while
+# checking stops the run: it must never be mistaken for "has code", nor trigger a needless redeploy.
 deployment_live() {
+  local k a code
   [ -f "$DEP" ] || return 1
   [ "$(jq -r .chainId "$DEP")" = "84532" ] || return 1
   for k in kinRouter kinHook kinVault factory; do
     a=$(jq -r ".$k // empty" "$DEP")
     [ -n "$a" ] || return 1
-    [ "$(cast code "$a" --rpc-url "$RPC")" != "0x" ] || return 1
+    if ! code=$(cast code "$a" --rpc-url "$RPC"); then
+      echo "RPC error while checking $k at $a; stopping" >&2
+      exit 1
+    fi
+    if ! [[ "$code" =~ ^0x[0-9a-fA-F]*$ ]]; then
+      echo "unexpected reply while checking $k at $a: '$code'; stopping" >&2
+      exit 1
+    fi
+    [ "$code" != "0x" ] || return 1
   done
 }
 if deployment_live; then

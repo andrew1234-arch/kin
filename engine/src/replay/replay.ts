@@ -1,47 +1,48 @@
 /**
  * Replay job: Kin Scan over a fixed sample of recent Base launches.
  *
- *   bun run src/replay/replay.ts replay/sample.json
+ *   bun run src/replay/replay.ts <sample.json> [--reuse <earlier report.json>]... [--out <report.json>] [--publish]
  *
- * The sample file names how it was chosen and lists every token with where it came from. The output
- * (DATA_DIR/replay/replay-<time>.json, and latest.json) carries the method, the sample, every raw scan,
- * and aggregates computed only from those scans. Every headline number traces back to this file.
+ * The sample file names how it was chosen and lists every token with where it came from. The report carries
+ * the method, the sample, every raw scan, and aggregates computed only from those scans. `--publish` also
+ * writes DATA_DIR/replay/latest.json, which the public /replay page serves; that file is only ever replaced
+ * by a run that scanned at least one token.
+ *
+ * Exit codes: 0 report written; 1 no token could be scanned (report written, nothing published);
+ * 2 configuration or usage error, 3 unexpected error (e.g. RPC down before scanning); nothing written for 2 and 3.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { formatEther, isAddress } from "viem";
+import { formatEther } from "viem";
 import { scanOptionsFromEnv } from "../config";
 import { historyFromEnv } from "../data/history";
 import { Rpc } from "../data/rpc";
-import { dataDir } from "../runtime";
-import { sameMethod, scanToken, type ScanOptions, type ScanResult } from "../scan/scan";
+import { dataDir } from "../paths";
+import { sameMethod, type ScanOptions, type ScanResult } from "../scan/scan";
+import { assertChain, ConfigError, flagValue, loadSample, prepareOutput, scanSampleToken } from "./sample";
 
-export interface ReplaySample {
-  chainId: number;
-  selection: string; // how the sample was chosen, in words
-  /** createdBlock (when known) lets each scan skip the deploy-block search. */
-  tokens: { address: string; source: string; createdBlock?: string }[];
-}
+export type { ReplaySample } from "./sample";
+export { loadSample } from "./sample";
 
-/** Read and validate a sample file; refuses an empty or unexplained sample. */
-export function loadSample(path: string): ReplaySample {
-  const sample = JSON.parse(readFileSync(path, "utf8")) as ReplaySample;
-  if (!sample.selection || /NOT YET CHOSEN/.test(sample.selection)) throw new Error(`${path}: the sample has no selection method`);
-  if (!Array.isArray(sample.tokens) || sample.tokens.length === 0) throw new Error(`${path}: the sample has no tokens`);
-  for (const t of sample.tokens) {
-    if (!isAddress(t.address)) throw new Error(`${path}: bad token address ${t.address}`);
-    if (t.createdBlock !== undefined && !/^\d+$/.test(t.createdBlock)) throw new Error(`${path}: bad createdBlock for ${t.address}`);
-  }
-  return sample;
-}
-
-/** Scans from an earlier report (Gate A or replay) that were made with the same parameters. */
-export function reusableScans(paths: string[], opts: ScanOptions, historyProvider: string): Map<string, ScanResult> {
+/** Scans from earlier reports (Gate A or replay) made on the same chain with exactly these parameters. */
+export function reusableScans(
+  paths: string[],
+  opts: ScanOptions,
+  historyProvider: string,
+  chainId: number,
+): Map<string, ScanResult> {
   const out = new Map<string, ScanResult>();
   for (const p of paths) {
-    const report = JSON.parse(readFileSync(p, "utf8")) as { results?: { scan?: ScanResult }[]; scans?: ScanResult[] };
+    let report: { results?: { scan?: ScanResult }[]; scans?: ScanResult[] };
+    try {
+      report = JSON.parse(readFileSync(p, "utf8"));
+    } catch (e) {
+      throw new ConfigError(`--reuse ${p}: ${(e as Error).message}`);
+    }
     const scans = [...(report.results ?? []).map((r) => r.scan), ...(report.scans ?? [])].filter(Boolean) as ScanResult[];
-    for (const sc of scans) if (sameMethod(sc, opts, historyProvider)) out.set(sc.token.toLowerCase(), sc);
+    for (const sc of scans) {
+      if (sc.chainId === chainId && sameMethod(sc, opts, historyProvider)) out.set(sc.token.toLowerCase(), sc);
+    }
   }
   return out;
 }
@@ -80,28 +81,39 @@ export function aggregate(scans: ScanResult[]) {
   };
 }
 
-/** "<sample.json> [--reuse report.json ...] [--out report.json]" */
-function parseCli(argv: string[]) {
+export function parseCli(argv: string[]) {
   let out: string | undefined;
+  let publish = false;
   const reuse: string[] = [];
   const pos: string[] = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--out") out = argv[++i];
-    else if (argv[i] === "--reuse") reuse.push(argv[++i]!);
-    else pos.push(argv[i]!);
+    const a = argv[i]!;
+    if (a === "--out") out = flagValue(argv, i++, a);
+    else if (a === "--reuse") reuse.push(flagValue(argv, i++, a));
+    else if (a === "--publish") publish = true;
+    else if (a.startsWith("--")) throw new ConfigError(`unknown option ${a}`);
+    else pos.push(a);
   }
-  if (!pos[0] || (argv.includes("--out") && !out) || reuse.some((r) => !r)) {
-    throw new Error("usage: replay.ts <sample.json> [--reuse <earlier report.json>]... [--out <report.json>]");
+  if (pos.length !== 1) {
+    throw new ConfigError("usage: replay.ts <sample.json> [--reuse <report.json>]... [--out <report.json>] [--publish]");
   }
-  return { samplePath: pos[0], out, reuse };
+  return { samplePath: pos[0]!, out, reuse, publish };
 }
 
-if (import.meta.main) {
+async function main(): Promise<number> {
   const cli = parseCli(process.argv.slice(2));
   const sample = loadSample(cli.samplePath);
   const opts = scanOptionsFromEnv();
-  const providerName = historyFromEnv(Rpc.fromEnv()).name;
-  const reused = reusableScans(cli.reuse, opts, providerName);
+  const probeRpc = Rpc.fromEnv();
+  await assertChain(probeRpc, sample.chainId);
+  const providerName = historyFromEnv(probeRpc).name;
+  const reused = reusableScans(cli.reuse, opts, providerName, sample.chainId);
+  const ranAt = new Date().toISOString();
+  const dir = join(dataDir(), "replay");
+  const file = cli.out ?? join(dir, `replay-${ranAt.replace(/[:.]/g, "-")}.json`);
+  prepareOutput(file);
+  if (cli.publish) prepareOutput(join(dir, "latest.json"));
+
   const scans: ScanResult[] = [];
   const failures: { token: string; error: string }[] = [];
   let reusedCount = 0;
@@ -110,13 +122,11 @@ if (import.meta.main) {
     if (prior) {
       scans.push(prior);
       reusedCount++;
-      console.log(`${prior.token} ${prior.symbol ?? ""} reused (same parameters)`);
+      console.log(`${prior.token} ${prior.symbol ?? ""} reused (same chain and parameters)`);
       continue;
     }
-    const rpc = Rpc.fromEnv();
     try {
-      const hint = t.createdBlock ? { deployBlock: BigInt(t.createdBlock) } : {};
-      const s = await scanToken(rpc, historyFromEnv(rpc), t.address, opts, hint);
+      const s = await scanSampleToken(t, opts, true);
       scans.push(s);
       console.log(`${s.token} ${s.symbol ?? ""} buyers=${s.summary.earlyBuyers} entities=${s.summary.multiWalletEntities}`);
     } catch (e) {
@@ -124,7 +134,6 @@ if (import.meta.main) {
       console.error(`${t.address} failed: ${(e as Error).message}`);
     }
   }
-  const ranAt = new Date().toISOString();
   const report = {
     schema: "kin-replay/1",
     ranAt,
@@ -135,11 +144,22 @@ if (import.meta.main) {
     failures,
     scans,
   };
-  const dir = join(dataDir(), "replay");
-  mkdirSync(dir, { recursive: true });
-  const file = cli.out ?? join(dir, `replay-${ranAt.replace(/[:.]/g, "-")}.json`);
   writeFileSync(file, JSON.stringify(report, null, 2));
-  writeFileSync(join(dir, "latest.json"), JSON.stringify(report));
-  console.log(`wrote ${file} (${scans.length} scanned, ${reusedCount} reused, ${failures.length} failed)`);
-  if (scans.length === 0) process.exit(1);
+  const published = cli.publish && scans.length > 0;
+  if (published) writeFileSync(join(dir, "latest.json"), JSON.stringify(report));
+  console.log(
+    `wrote ${file} (${scans.length} scanned, ${reusedCount} reused, ${failures.length} failed)` +
+      (cli.publish ? (published ? "; published as latest.json" : "; NOT published: nothing was scanned") : ""),
+  );
+  return scans.length > 0 ? 0 : 1;
+}
+
+if (import.meta.main) {
+  main().then(
+    (code) => process.exit(code),
+    (e) => {
+      console.error(e instanceof ConfigError ? `configuration error: ${e.message}` : e);
+      process.exit(e instanceof ConfigError ? 2 : 3);
+    },
+  );
 }

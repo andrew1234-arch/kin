@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { createPublicClient, http, type PublicClient } from "viem";
 import { scanOptionsFromEnv } from "./config";
 import { historyFromEnv } from "./data/history";
@@ -6,7 +5,8 @@ import { Rpc } from "./data/rpc";
 import { LaunchService } from "./launch/service";
 import { LaunchStore } from "./launch/store";
 import { chainFor } from "./sandbox/relayer";
-import { envNum, envStr } from "./env";
+import { envNum, envRequired, envStr } from "./env";
+import { dataDir } from "./paths";
 
 /**
  * Wiring shared by the API server and the admin CLI.
@@ -15,8 +15,13 @@ import { envNum, envStr } from "./env";
  *   LAUNCH_CHAIN_ID      its chain id (checked against the RPC at startup by the server)
  *   LAUNCH_HISTORY_PROVIDER  transfer-history provider for that chain (alchemy | blockscout | rpc-scan)
  */
-export function dataDir() {
-  return envStr("DATA_DIR") ?? join(import.meta.dir, "../data/runtime");
+export { dataDir };
+
+/** History provider for the launch chain (Base Sepolia): its own Blockscout instance, never mainnet's. */
+export function launchHistory(rpc: Rpc) {
+  const provider = envStr("LAUNCH_HISTORY_PROVIDER") ?? envStr("HISTORY_PROVIDER") ?? "alchemy";
+  const url = provider === "blockscout" ? envRequired("LAUNCH_BLOCKSCOUT_API_URL") : undefined;
+  return historyFromEnv(rpc, provider, url);
 }
 
 export function launchRuntime() {
@@ -37,7 +42,7 @@ export function launchRuntime() {
       if (!rpcUrl) throw new Error("LAUNCH_RPC_URL is not set");
       return new Rpc(rpcUrl);
     },
-    history: (rpc) => historyFromEnv(rpc, envStr("LAUNCH_HISTORY_PROVIDER")),
+    history: launchHistory,
     excluded: scanOpts.excluded,
     exclusionsSource: scanOpts.exclusionsSource,
     fundingWindowHours: scanOpts.fundingWindowHours,

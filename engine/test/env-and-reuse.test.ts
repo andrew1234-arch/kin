@@ -43,8 +43,8 @@ const opts: ScanOptions = {
   excluded: new Set(),
   exclusionsSource: { repo: "x", commit: "y", count: 1, extra: [] },
 };
-const fakeScan = (token: string, method: Record<string, unknown>) =>
-  ({ token, method: { ...method, measuredBlockTimeSec: 2 } }) as unknown as ScanResult;
+const fakeScan = (token: string, method: Record<string, unknown>, chainId = 8453) =>
+  ({ token, chainId, method: { ...method, measuredBlockTimeSec: 2 } }) as unknown as ScanResult;
 
 describe("replay reuse", () => {
   test("a scan is reused only when every parameter matches", () => {
@@ -64,10 +64,11 @@ describe("replay reuse", () => {
         results: [
           { scan: fakeScan("0xAAA", methodParams(opts, "alchemy")) },
           { scan: fakeScan("0xBBB", methodParams({ ...opts, earlyBuyers: 10 }, "alchemy")) },
+          { scan: fakeScan("0xCCC", methodParams(opts, "alchemy"), 84532) }, // same parameters, other chain
         ],
       }),
     );
-    const m = reusableScans([gate], opts, "alchemy");
+    const m = reusableScans([gate], opts, "alchemy", 8453);
     expect([...m.keys()]).toEqual(["0xaaa"]);
   });
 
