@@ -25,7 +25,7 @@ BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 | Piece | State |
 |---|---|
 | Contracts | 31 tests pass (`cd contracts && forge test`) |
-| Engine | 34 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Engine | 41 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
 | Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
 | Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |

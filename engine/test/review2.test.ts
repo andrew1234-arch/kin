@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Rpc } from "../src/data/rpc";
 import { parseCli as gateACli } from "../src/gates/gateA";
 import { parseCli as replayCli } from "../src/replay/replay";
-import { ConfigError } from "../src/replay/sample";
+import { ConfigError, EXIT, loadSample, prepareOutput } from "../src/replay/sample";
 import { parseArgs as selectArgs } from "../src/replay/selectSample";
 import { launchHistory } from "../src/runtime";
 
@@ -68,7 +68,9 @@ describe("strict command lines", () => {
     expect(() => replayCli(["s.json", "--reuse", "--publish"])).toThrow(ConfigError);
     expect(() => replayCli(["s.json", "extra.json"])).toThrow(ConfigError);
     expect(() => replayCli(["s.json", "--frobnicate"])).toThrow(ConfigError);
-    expect(replayCli(["s.json", "--publish", "--out", "o.json"])).toEqual({ samplePath: "s.json", out: "o.json", reuse: [], publish: true });
+    expect(replayCli(["s.json", "--publish", "--out", "o.json"])).toEqual({ samplePath: "s.json", out: "o.json", reuse: [], publish: "complete" });
+    expect(replayCli(["s.json", "--publish-partial"]).publish).toBe("partial");
+    expect(() => replayCli(["s.json", "--publish", "--publish-partial"])).toThrow(ConfigError);
   });
 
   test("the sample selector refuses a fourth positional argument (a forgotten --out)", () => {
@@ -82,6 +84,13 @@ describe("launch-chain history provider", () => {
   const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
   afterEach(() => KEYS.forEach((k) => (saved[k] === undefined ? delete process.env[k] : (process.env[k] = saved[k]))));
 
+  test("the launch provider never inherits the mainnet scan provider", () => {
+    delete process.env.LAUNCH_HISTORY_PROVIDER;
+    process.env.HISTORY_PROVIDER = "blockscout";
+    process.env.BLOCKSCOUT_API_URL = "https://mainnet-blockscout.example/api/v2";
+    expect(launchHistory(new Rpc("http://127.0.0.1:1")).name).toBe("alchemy");
+  });
+
   test("blockscout on the launch chain needs its own URL and never falls back to mainnet's", () => {
     process.env.LAUNCH_HISTORY_PROVIDER = "blockscout";
     process.env.BLOCKSCOUT_API_URL = "https://mainnet-blockscout.example/api/v2";
@@ -89,5 +98,69 @@ describe("launch-chain history provider", () => {
     expect(() => launchHistory(new Rpc("http://127.0.0.1:1"))).toThrow("LAUNCH_BLOCKSCOUT_API_URL");
     process.env.LAUNCH_BLOCKSCOUT_API_URL = "https://sepolia-blockscout.example/api/v2";
     expect(launchHistory(new Rpc("http://127.0.0.1:1")).name).toBe("blockscout");
+  });
+});
+
+describe("third review round", () => {
+  const dir = mkdtempSync(join(tmpdir(), "kin-r3-"));
+  const f = (name: string, body: string) => {
+    const p = join(dir, name);
+    writeFileSync(p, body);
+    return p;
+  };
+
+  test("keys that aren't shell variable names are skipped with a warning; the rest still load", () => {
+    const p = f("keys.env", "MY-KEY=1\nfoo.bar=2\nGOOD=3\n");
+    const r = loadEnv([p], {}, ["GOOD"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("GOOD=[3]");
+    expect(r.err).toContain('skipping "MY-KEY"');
+  });
+
+  test("relative paths are read from the caller's directory", () => {
+    f("rel.env", "REL_KEY=yes\n");
+    const script = `set -euo pipefail; . ${engineDir}/scripts/run-env.sh; load_env rel.env; echo "REL_KEY=[\${REL_KEY-<unset>}]"`;
+    const r = Bun.spawnSync(["bash", "-c", script], { cwd: dir, env: { PATH: process.env.PATH ?? "" } });
+    expect(r.stdout.toString()).toContain("REL_KEY=[yes]");
+  });
+
+  test("a Node without util.parseEnv is passed over for Bun", () => {
+    const bin = join(dir, "bin");
+    mkdirSync(bin, { recursive: true });
+    const fakeNode = join(bin, "node");
+    writeFileSync(fakeNode, "#!/bin/sh\n# an old Node: fails the parseEnv capability check and anything else\nexit 1\n");
+    chmodSync(fakeNode, 0o755);
+    symlinkSync(Bun.which("bun")!, join(bin, "bun"));
+    const p = f("old.env", "OLD_NODE_KEY=ok\n");
+    const r = loadEnv([p], { PATH: `${bin}:/usr/bin:/bin` }, ["OLD_NODE_KEY"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("OLD_NODE_KEY=[ok]");
+  });
+
+  test("samples: non-objects and duplicate tokens are configuration errors", () => {
+    expect(() => loadSample(f("null.json", "null"))).toThrow(ConfigError);
+    expect(() => loadSample(f("arr.json", "[]"))).toThrow(ConfigError);
+    const dup = { chainId: 8453, selection: "rule", tokens: [
+      { address: "0x4200000000000000000000000000000000000006", source: "a" },
+      { address: "0x4200000000000000000000000000000000000006".toUpperCase().replace("0X", "0x"), source: "b" },
+    ] };
+    expect(() => loadSample(f("dup.json", JSON.stringify(dup)))).toThrow("listed twice");
+  });
+
+  test("an output path that is a directory is refused before any work", () => {
+    expect(() => prepareOutput(dir)).toThrow(ConfigError);
+    expect(() => prepareOutput(join(dir, "new", "deeper", "report.json"))).not.toThrow();
+  });
+
+  test("settings problems exit 2, and 'nothing scanned' has its own code distinct from a crash", () => {
+    expect(EXIT.nothingScanned).not.toBe(1);
+    const run = (env: Record<string, string>) =>
+      Bun.spawnSync(["bun", "run", "src/gates/gateA.ts", "0x4200000000000000000000000000000000000006"], {
+        cwd: engineDir,
+        env: { PATH: process.env.PATH ?? "", ...env },
+      }).exitCode;
+    expect(run({ BASE_RPC_URL: "" })).toBe(EXIT.config);
+    expect(run({ BASE_RPC_URL: "http://127.0.0.1:1", KIN_CAP_ETH: "lots" })).toBe(EXIT.config);
+    expect(run({ BASE_RPC_URL: "http://127.0.0.1:1", HISTORY_PROVIDER: "nope" })).toBe(EXIT.config);
   });
 });

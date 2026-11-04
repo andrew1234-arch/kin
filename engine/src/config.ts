@@ -1,6 +1,13 @@
 import { parseEther } from "viem";
 import { loadExclusions } from "./data/exclusions";
-import { envNum, envPositiveBigInt, envStr } from "./env";
+import { ConfigError, envNum, envPositiveBigInt, envStr } from "./env";
+
+/** An ETH amount from an override or the environment; a malformed amount is a configuration error. */
+function ethSetting(key: string, override: string | undefined, def: string): bigint {
+  const v = override ?? envStr(key) ?? def;
+  if (!/^\d+(\.\d+)?$/.test(v)) throw new ConfigError(`${key}=${v} is not an ETH amount`);
+  return parseEther(v);
+}
 import { DEFAULT_SCAN_OPTIONS, type ScanOptions } from "./scan/scan";
 
 /**
@@ -24,8 +31,8 @@ export function scanOptionsFromEnv(
     maxHops: DEFAULT_SCAN_OPTIONS.maxHops,
     freshMaxNonce: envNum("FRESH_MAX_NONCE", DEFAULT_SCAN_OPTIONS.freshMaxNonce, { min: 0, integer: true }),
     caps: {
-      capWei: parseEther(overrides.capEth ?? envStr("KIN_CAP_ETH") ?? "0.1"),
-      freshPoolCapWei: parseEther(overrides.freshCapEth ?? envStr("KIN_FRESH_POOL_CAP_ETH") ?? "0.2"),
+      capWei: ethSetting("KIN_CAP_ETH", overrides.capEth, "0.1"),
+      freshPoolCapWei: ethSetting("KIN_FRESH_POOL_CAP_ETH", overrides.freshCapEth, "0.2"),
     },
     excluded: ex.set,
     exclusionsSource: { ...ex.list.source, count: ex.list.count, extra },

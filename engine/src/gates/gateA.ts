@@ -10,16 +10,27 @@
  *   bun run src/gates/gateA.ts <token>... [--out report.json]
  *   bun run src/gates/gateA.ts --sample replay/sample.json [--count 3] [--out report.json]
  *
- * Exit codes: 0 at least one token scanned; 1 none scanned (report written); 2 configuration or usage
- * error; 3 unexpected error (nothing written for 2 and 3).
+ * Exit codes (EXIT in replay/sample.ts): 0 at least one token scanned; 10 none scanned (report written);
+ * 2 configuration or usage error; 3 unexpected error. Nothing is written for 2 and 3.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isAddress } from "viem";
 import { scanOptionsFromEnv } from "../config";
+import { historyFromEnv } from "../data/history";
 import { Rpc } from "../data/rpc";
 import { envStr } from "../env";
-import { assertChain, ConfigError, flagValue, loadSample, prepareOutput, scanSampleToken, type SampleToken } from "../replay/sample";
+import {
+  assertChain,
+  ConfigError,
+  EXIT,
+  flagValue,
+  loadSample,
+  prepareOutput,
+  runCli,
+  scanSampleToken,
+  type SampleToken,
+} from "../replay/sample";
 
 export function parseCli(argv: string[]) {
   let out: string | undefined;
@@ -66,7 +77,11 @@ async function main(): Promise<number> {
   const cli = parseCli(process.argv.slice(2));
   const pricing = loadPricing();
   const opts = scanOptionsFromEnv();
-  if (cli.chainId !== null) await assertChain(Rpc.fromEnv(), cli.chainId);
+  // Build the RPC client and history provider once up front: a missing or bad setting is a configuration
+  // error (exit 2), not something to discover per token and report as a failed scan.
+  const rpc = Rpc.fromEnv();
+  historyFromEnv(rpc);
+  if (cli.chainId !== null) await assertChain(rpc, cli.chainId);
   const ranAt = new Date().toISOString();
   const file = cli.out ?? join(import.meta.dir, "../../out", `gate-a-${ranAt.replace(/[:.]/g, "-")}.json`);
   prepareOutput(file);
@@ -89,21 +104,14 @@ async function main(): Promise<number> {
       );
       results.push({ token: scan.token, elapsedMs: scan.cost.elapsedMs, calls: scan.cost.calls, totalCalls: scan.cost.totalCalls, costUsd, scan });
     } catch (e) {
+      if (e instanceof ConfigError) throw e; // settings, not this token
       failures.push({ token: t.address, error: (e as Error).message });
       console.error(`${t.address} FAILED: ${(e as Error).message}`);
     }
   }
   writeFileSync(file, JSON.stringify({ gate: "A", ranAt, pricingSource: pricing?.source ?? null, results, failures }, null, 2));
   console.log(`wrote ${file} (${results.length} scanned, ${failures.length} failed)`);
-  return results.length > 0 ? 0 : 1;
+  return results.length > 0 ? EXIT.ok : EXIT.nothingScanned;
 }
 
-if (import.meta.main) {
-  main().then(
-    (code) => process.exit(code),
-    (e) => {
-      console.error(e instanceof ConfigError ? `configuration error: ${e.message}` : e);
-      process.exit(e instanceof ConfigError ? 2 : 3);
-    },
-  );
-}
+if (import.meta.main) runCli(main);

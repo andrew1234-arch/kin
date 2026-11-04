@@ -1,6 +1,6 @@
 import { getAddress, type Address, type Hex } from "viem";
 import { hex, Rpc } from "./rpc";
-import { envRequired, envStr } from "../env";
+import { ConfigError, envRequired, envStr } from "../env";
 
 /**
  * Transfer-history access: "who sent native ETH to this address, up to block X?".
@@ -145,7 +145,7 @@ export function historyFromEnv(rpc: Rpc, provider?: string, blockscoutUrl?: stri
   if (p === "blockscout") {
     return new BlockscoutHistory(blockscoutUrl ?? envRequired("BLOCKSCOUT_API_URL"));
   }
-  throw new Error(`unknown HISTORY_PROVIDER ${p}`);
+  throw new ConfigError(`unknown history provider "${p}" (alchemy | blockscout | rpc-scan)`);
 }
 
 /**

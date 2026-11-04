@@ -1,4 +1,10 @@
 /**
+ * A configuration or usage problem (missing or malformed setting, bad argument). CLIs exit with code 2 for
+ * it and write nothing; anything else is an unexpected error.
+ */
+export class ConfigError extends Error {}
+
+/**
  * Environment access for the engine. An empty or whitespace-only value counts as unset, because
  * .env.example ships blank keys and `KEY=` must not mean "the empty string". Numbers are validated:
  * a malformed value fails loudly instead of becoming NaN or 0.
@@ -10,7 +16,7 @@ export function envStr(key: string): string | undefined {
 
 export function envRequired(key: string, hint = "see engine/.env.example"): string {
   const v = envStr(key);
-  if (v === undefined) throw new Error(`${key} is not set (${hint})`);
+  if (v === undefined) throw new ConfigError(`${key} is not set (${hint})`);
   return v;
 }
 
@@ -19,7 +25,7 @@ export function envNum(key: string, def: number, opts: { min?: number; integer?:
   if (v === undefined) return def;
   const n = Number(v);
   if (!Number.isFinite(n) || (opts.integer && !Number.isInteger(n)) || (opts.min !== undefined && n < opts.min)) {
-    throw new Error(`${key}=${v} is not a valid ${opts.integer ? "integer" : "number"}${opts.min !== undefined ? ` >= ${opts.min}` : ""}`);
+    throw new ConfigError(`${key}=${v} is not a valid ${opts.integer ? "integer" : "number"}${opts.min !== undefined ? ` >= ${opts.min}` : ""}`);
   }
   return n;
 }
@@ -28,6 +34,6 @@ export function envNum(key: string, def: number, opts: { min?: number; integer?:
 export function envPositiveBigInt(key: string, def: bigint): bigint {
   const v = envStr(key);
   if (v === undefined) return def;
-  if (!/^\d+$/.test(v) || BigInt(v) <= 0n) throw new Error(`${key}=${v} must be a positive integer`);
+  if (!/^\d+$/.test(v) || BigInt(v) <= 0n) throw new ConfigError(`${key}=${v} must be a positive integer`);
   return BigInt(v);
 }

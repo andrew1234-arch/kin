@@ -15,11 +15,12 @@ import { dataDir } from "./paths";
  *   LAUNCH_CHAIN_ID      its chain id (checked against the RPC at startup by the server)
  *   LAUNCH_HISTORY_PROVIDER  transfer-history provider for that chain (alchemy | blockscout | rpc-scan)
  */
-export { dataDir };
-
-/** History provider for the launch chain (Base Sepolia): its own Blockscout instance, never mainnet's. */
+/**
+ * History provider for the launch chain (Base Sepolia). Configured on its own: it never inherits the Base
+ * mainnet scan settings (HISTORY_PROVIDER, BLOCKSCOUT_API_URL).
+ */
 export function launchHistory(rpc: Rpc) {
-  const provider = envStr("LAUNCH_HISTORY_PROVIDER") ?? envStr("HISTORY_PROVIDER") ?? "alchemy";
+  const provider = envStr("LAUNCH_HISTORY_PROVIDER") ?? "alchemy";
   const url = provider === "blockscout" ? envRequired("LAUNCH_BLOCKSCOUT_API_URL") : undefined;
   return historyFromEnv(rpc, provider, url);
 }

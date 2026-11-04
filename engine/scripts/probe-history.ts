@@ -23,12 +23,23 @@ if (rows.length === 0) {
   console.error("No transfers parsed. Check the provider settings and its response format.");
   process.exit(1);
 }
-const r = rows[0]!;
-for (const [k, v] of Object.entries(r)) console.log(`  ${k}: ${typeof v === "bigint" ? v.toString() : v}`);
-// Written as !(x > 0) so NaN (what a renamed or missing field produces) fails too. Value must be > 0:
-// every provider is asked for non-zero transfers only, so 0 means the value field wasn't read.
-if (!/^0x[0-9a-fA-F]{64}$/.test(r.txHash) || !(r.blockNumber > 0n) || !(r.timestamp > 0) || !(r.value > 0n)) {
-  console.error("Parsed row is incomplete or malformed (hash, block, timestamp or value).");
+for (const [k, v] of Object.entries(rows[0]!)) console.log(`  ${k}: ${typeof v === "bigint" ? v.toString() : v}`);
+
+// Every row must have a well-formed hash, block and timestamp. Comparisons are written as !(x > 0) so NaN
+// (what a renamed or missing field produces) fails too.
+const bad: string[] = [];
+rows.forEach((r, i) => {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(r.txHash)) bad.push(`row ${i}: txHash ${r.txHash}`);
+  if (!(r.blockNumber > 0n)) bad.push(`row ${i}: blockNumber ${r.blockNumber}`);
+  if (!(r.timestamp > 0)) bad.push(`row ${i}: timestamp ${r.timestamp}`);
+});
+// Providers are asked for non-zero transfers, so a value of 0 means the value field wasn't read. One such
+// row can be a provider quirk (e.g. an internal transfer without a raw value): warn. All of them: fail.
+const zeroValue = rows.filter((r) => !(r.value > 0n)).length;
+if (zeroValue === rows.length) bad.push(`value is 0 or missing in all ${rows.length} rows`);
+else if (zeroValue > 0) console.warn(`warning: value is 0 or missing in ${zeroValue} of ${rows.length} rows`);
+if (bad.length > 0) {
+  console.error(`Malformed rows from ${history.name}:\n  ${bad.join("\n  ")}`);
   process.exit(1);
 }
-console.log("history provider OK");
+console.log(`history provider OK (${rows.length} rows checked)`);

@@ -80,6 +80,6 @@ describe("replay reuse", () => {
     writeFileSync(p, JSON.stringify({ chainId: 8453, selection: "rule", tokens: [] }));
     expect(() => loadSample(p)).toThrow("no tokens");
     writeFileSync(p, JSON.stringify({ chainId: 8453, selection: "rule", tokens: [{ address: "0x1234", source: "s" }] }));
-    expect(() => loadSample(p)).toThrow("bad token address");
+    expect(() => loadSample(p)).toThrow("bad token entry");
   });
 });

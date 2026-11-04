@@ -1,15 +1,17 @@
 /**
  * Replay job: Kin Scan over a fixed sample of recent Base launches.
  *
- *   bun run src/replay/replay.ts <sample.json> [--reuse <earlier report.json>]... [--out <report.json>] [--publish]
+ *   bun run src/replay/replay.ts <sample.json> [--reuse <earlier report.json>]... [--out <report.json>]
+ *                                [--publish | --publish-partial]
  *
  * The sample file names how it was chosen and lists every token with where it came from. The report carries
  * the method, the sample, every raw scan, and aggregates computed only from those scans. `--publish` also
- * writes DATA_DIR/replay/latest.json, which the public /replay page serves; that file is only ever replaced
- * by a run that scanned at least one token.
+ * writes DATA_DIR/replay/latest.json, which the public /replay page serves, but only if EVERY token in the
+ * sample was scanned, so a run hit by rate limits can't replace a complete report with a partial one.
+ * `--publish-partial` publishes any run that scanned at least one token (its failures are in the report).
  *
- * Exit codes: 0 report written; 1 no token could be scanned (report written, nothing published);
- * 2 configuration or usage error, 3 unexpected error (e.g. RPC down before scanning); nothing written for 2 and 3.
+ * Exit codes (EXIT in sample.ts): 0 report written; 10 no token could be scanned (report written, nothing
+ * published); 2 configuration or usage error; 3 unexpected error. Nothing is written for 2 and 3.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +21,7 @@ import { historyFromEnv } from "../data/history";
 import { Rpc } from "../data/rpc";
 import { dataDir } from "../paths";
 import { sameMethod, type ScanOptions, type ScanResult } from "../scan/scan";
-import { assertChain, ConfigError, flagValue, loadSample, prepareOutput, scanSampleToken } from "./sample";
+import { assertChain, ConfigError, EXIT, flagValue, loadSample, prepareOutput, runCli, scanSampleToken } from "./sample";
 
 export type { ReplaySample } from "./sample";
 export { loadSample } from "./sample";
@@ -83,19 +85,25 @@ export function aggregate(scans: ScanResult[]) {
 
 export function parseCli(argv: string[]) {
   let out: string | undefined;
-  let publish = false;
+  let publish: "no" | "complete" | "partial" = "no";
   const reuse: string[] = [];
   const pos: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--out") out = flagValue(argv, i++, a);
     else if (a === "--reuse") reuse.push(flagValue(argv, i++, a));
-    else if (a === "--publish") publish = true;
+    else if (a === "--publish" || a === "--publish-partial") {
+      const mode = a === "--publish" ? "complete" : "partial";
+      if (publish !== "no" && publish !== mode) throw new ConfigError("use either --publish or --publish-partial, not both");
+      publish = mode;
+    }
     else if (a.startsWith("--")) throw new ConfigError(`unknown option ${a}`);
     else pos.push(a);
   }
   if (pos.length !== 1) {
-    throw new ConfigError("usage: replay.ts <sample.json> [--reuse <report.json>]... [--out <report.json>] [--publish]");
+    throw new ConfigError(
+      "usage: replay.ts <sample.json> [--reuse <report.json>]... [--out <report.json>] [--publish | --publish-partial]",
+    );
   }
   return { samplePath: pos[0]!, out, reuse, publish };
 }
@@ -112,7 +120,7 @@ async function main(): Promise<number> {
   const dir = join(dataDir(), "replay");
   const file = cli.out ?? join(dir, `replay-${ranAt.replace(/[:.]/g, "-")}.json`);
   prepareOutput(file);
-  if (cli.publish) prepareOutput(join(dir, "latest.json"));
+  if (cli.publish !== "no") prepareOutput(join(dir, "latest.json"));
 
   const scans: ScanResult[] = [];
   const failures: { token: string; error: string }[] = [];
@@ -130,6 +138,7 @@ async function main(): Promise<number> {
       scans.push(s);
       console.log(`${s.token} ${s.symbol ?? ""} buyers=${s.summary.earlyBuyers} entities=${s.summary.multiWalletEntities}`);
     } catch (e) {
+      if (e instanceof ConfigError) throw e; // settings, not this token
       failures.push({ token: t.address, error: (e as Error).message });
       console.error(`${t.address} failed: ${(e as Error).message}`);
     }
@@ -145,21 +154,17 @@ async function main(): Promise<number> {
     scans,
   };
   writeFileSync(file, JSON.stringify(report, null, 2));
-  const published = cli.publish && scans.length > 0;
+  const complete = failures.length === 0 && scans.length === sample.tokens.length;
+  const published = scans.length > 0 && (cli.publish === "partial" || (cli.publish === "complete" && complete));
   if (published) writeFileSync(join(dir, "latest.json"), JSON.stringify(report));
-  console.log(
-    `wrote ${file} (${scans.length} scanned, ${reusedCount} reused, ${failures.length} failed)` +
-      (cli.publish ? (published ? "; published as latest.json" : "; NOT published: nothing was scanned") : ""),
-  );
-  return scans.length > 0 ? 0 : 1;
+  let note = "";
+  if (cli.publish !== "no") {
+    if (published) note = "; published as latest.json";
+    else if (scans.length === 0) note = "; NOT published: nothing was scanned";
+    else note = `; NOT published: ${failures.length} of ${sample.tokens.length} tokens failed (use --publish-partial to publish anyway)`;
+  }
+  console.log(`wrote ${file} (${scans.length} scanned, ${reusedCount} reused, ${failures.length} failed)${note}`);
+  return scans.length > 0 ? EXIT.ok : EXIT.nothingScanned;
 }
 
-if (import.meta.main) {
-  main().then(
-    (code) => process.exit(code),
-    (e) => {
-      console.error(e instanceof ConfigError ? `configuration error: ${e.message}` : e);
-      process.exit(e instanceof ConfigError ? 2 : 3);
-    },
-  );
-}
+if (import.meta.main) runCli(main);

@@ -29,22 +29,22 @@ bun run src/replay/selectSample.ts "$N" "$DAYS" "$SETTLE" --out "$SAMPLE"
 cp "$SAMPLE" replay/sample.json
 
 echo "== 3. Gate A on the first 3 sampled launches"
-# Exit 1 = no token could be scanned (report written): continue to the replay. Any other failure
-# (bad settings, unreadable pricing file, crash) stops the run.
+# Exit 10 = no token could be scanned (report written): continue to the replay. Any other failure
+# (2 bad settings, 3 unexpected error, 1 Bun crash) stops the run.
 set +e
 bun run src/gates/gateA.ts --sample "$SAMPLE" --count 3 --out "$GATE_A"
 GATE_A_STATUS=$?
 set -e
 case $GATE_A_STATUS in
   0) ;;
-  1) echo "Gate A could not scan any of the 3 tokens (see $GATE_A); continuing to the replay" ;;
-  *) echo "Gate A failed before scanning (exit $GATE_A_STATUS); stopping"; exit 1 ;;
+  10) echo "Gate A could not scan any of the 3 tokens (see $GATE_A); continuing to the replay" ;;
+  *) echo "Gate A failed (exit $GATE_A_STATUS); stopping"; exit 1 ;;
 esac
 
 echo "== 4. replay over the whole sample (reusing Gate A's scans made with the same parameters)"
 REUSE=()
 [ -f "$GATE_A" ] && REUSE=(--reuse "$GATE_A")
-# --publish updates the file the public /replay page serves, only if at least one token was scanned.
+# --publish updates the file the public /replay page serves, only if every sampled token was scanned.
 bun run src/replay/replay.ts "$SAMPLE" ${REUSE[@]+"${REUSE[@]}"} --out "$REPLAY" --publish
 jq '.aggregates' "$REPLAY"
 echo "reports: $SAMPLE, $GATE_A, $REPLAY"

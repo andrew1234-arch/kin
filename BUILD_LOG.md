@@ -4,6 +4,34 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D2 — Wed 4 Nov 2026: third code-review round
+
+**Tool:** AI coding agent (a third `/code-review` pass, 13 findings, then "fix all of them").
+**Changed by hand:** nothing.
+
+Fixes:
+- `.env` loader: keys that aren't shell variable names (e.g. `MY-KEY`) are skipped with a warning instead of
+  aborting the run scripts; relative paths are read from the caller's directory; Node is used only if it has
+  `util.parseEnv` (>= 20.12), otherwise Bun.
+- Replay `--publish` replaces the public report only if every sampled token was scanned; `--publish-partial` is
+  the explicit opt-in for publishing a run with failures.
+- Exit codes: "nothing scanned" is now 10 (1 is Bun's crash code); `real-mainnet.sh` continues only on 10.
+- Settings errors from the env helpers, the history-provider choice and ETH amounts are `ConfigError` (exit 2);
+  Gate A and the replay re-throw them instead of recording them as failed scans (a new test caught Gate A
+  exiting "nothing scanned" for a blank `BASE_RPC_URL`), and Gate A builds its RPC client up front.
+- Output paths that are directories or read-only files are refused before scanning.
+- Samples that aren't JSON objects, or list a token twice, are refused.
+- The provider probe checks every row; a zero value fails only if it's zero in every row.
+- The launch chain's history provider no longer inherits the mainnet `HISTORY_PROVIDER`.
+- Cleanups: one shared `runCli` for the exit-code mapping; `server.ts` imports `dataDir` from `paths.ts`.
+
+Checked: engine 41 tests, contracts 31, web build, API server smoke test. Locally: a 2-token replay with one failure
+is not published with `--publish` and is with `--publish-partial`; an all-failing replay and Gate A exit 10; an
+unknown provider exits 2 with nothing written; both runbooks pass again end to end (chain posing as Base; stubbed
+RPC error for the Sepolia script).
+
+---
+
 ## D2 — Wed 4 Nov 2026: second code-review round
 
 **Tool:** same as above (a second `/code-review` pass, 15 findings, then "fix all of them").
