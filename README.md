@@ -25,13 +25,13 @@ BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 | Piece | State |
 |---|---|
 | Contracts | 31 tests pass (`cd contracts && forge test`) |
-| Engine | 41 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Engine | 47 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
 | Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
 | Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |
 | Fairness Receipt page + embed | Built |
 | Replay job + page | Built; sample selection is by rule from Clanker v4 events; **not yet computed** (needs Base mainnet access) |
-| Base Verify tier | Not built (interface unverified; on the roadmap) |
+| Base Verify tier (verified-human cap) | Built and tested against a local mock of Base's API; needs a Base Verify secret key (Base's interest form) to go live |
 | Gate A / Gate B on real networks | Pending: this build environment cannot reach Base |
 | Live URL | None yet |
 

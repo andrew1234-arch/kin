@@ -121,6 +121,9 @@ export interface LaunchView {
   tiers: { capWei: string; freshPoolCapWei: string; verifiedCapWei: string; freshMaxNonce: number };
   window: { delayAfterBuildSec: number; lengthSec: number; lockSec: number };
   registrations: number;
+  verifiedWallets?: number;
+  /** Whether the engine has Base Verify enabled (the verified-human tier). */
+  baseVerify?: boolean;
   disputes: { id: string; wallet: string; reason: string; at: number; status: string; resolution: string | null }[];
   allowlist: null | { version: number; root: string; evidenceHash: string; stats: AllowlistStats; builtAt: number; snapshotBlock: string };
   onchain: null | {
@@ -147,6 +150,7 @@ export interface WalletStatus {
   wallet: string;
   registered: boolean;
   registeredAt: number | null;
+  verified?: boolean;
   entry: AllowlistEntry | null;
   entityMembers: number | null;
   disputes: { id: string; reason: string; status: string; resolution: string | null }[];

@@ -1,7 +1,7 @@
 /**
  * Launch admin CLI.
  *
- *   bun run src/launch/admin.ts create <slug> <name> <symbol> [capEth=0.01] [freshPoolCapEth=0.02] [registrationHours=24] [windowMin=30] [lockMin=60] [disputeMin=30]
+ *   bun run src/launch/admin.ts create <slug> <name> <symbol> [capEth=0.01] [freshPoolCapEth=0.02] [registrationHours=24] [windowMin=30] [lockMin=60] [disputeMin=30] [verifiedCapEth=capEth]
  *   bun run src/launch/admin.ts build <slug>
  *   bun run src/launch/admin.ts deploy <slug>          # factory.createLaunch with the built root; window opens after the dispute period
  *   bun run src/launch/admin.ts resolve <slug> <disputeId> accept|reject [unlink] [note...]
@@ -32,7 +32,7 @@ function onchainClients() {
 
 switch (cmd) {
   case "create": {
-    const [name, symbol, cap = "0.01", fresh = "0.02", regHours = "24", windowMin = "30", lockMin = "60", disputeMin = "30"] = rest;
+    const [name, symbol, cap = "0.01", fresh = "0.02", regHours = "24", windowMin = "30", lockMin = "60", disputeMin = "30", verifiedCap] = rest;
     if (!name || !symbol) throw new Error("name and symbol are required");
     const rec = rt.service.create({
       slug,
@@ -43,7 +43,8 @@ switch (cmd) {
       tiers: {
         capWei: parseEther(cap).toString(),
         freshPoolCapWei: parseEther(fresh).toString(),
-        verifiedCapWei: parseEther(cap).toString(), // Base Verify tier not wired yet: same as cap
+        // Verified humans (Base Verify) get verifiedCap; defaults to the normal cap.
+        verifiedCapWei: parseEther(verifiedCap ?? cap).toString(),
         freshMaxNonce: 0,
       },
       window: { delayAfterBuildSec: Number(disputeMin) * 60, lengthSec: Number(windowMin) * 60, lockSec: Number(lockMin) * 60 },

@@ -4,6 +4,35 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D3 — Thu 5 Nov 2026: Base Verify tier
+
+**Tool:** AI coding agent. **Prompt:** "Continue the build". **Changed by hand:** nothing.
+
+Network access is still closed, so this session built the one remaining feature that doesn't need it.
+
+**Finding that changes the brief:** the brief said Base Verify's onchain variant needs no API key. Base's official demo
+(`github.com/base/base-verify-demo` @ `7005338`) shows that both variants call Base's API with a secret key from
+their interest form. The verified tier therefore waits on that key, but the offchain endpoint also works on Base
+mainnet, so the tier is no longer limited to Base Sepolia.
+
+Built (`engine/src/verify/baseVerify.ts`, launch service, API, launch page):
+- Kin builds the SIWE message itself (provider, optional traits, a per-launch action, nonce, expiry), the wallet signs
+  it, and the engine sends it to `POST /v1/base_verify_token` with the secret key. Messages are single use.
+- Base Verify's token is the same for one account across wallets, so one verified account can verify one wallet per
+  launch; a second wallet behind it is refused. Only a hash of the token is stored.
+- A verified wallet gets the launch's verified cap through the existing allowlist tier (a linked entity with a verified
+  member gets it once, shared). No contract change.
+- Not verified yet → the page links to Base's mini app and back. Off entirely without `BASE_VERIFY_SECRET_KEY`.
+- `admin.ts create … [verifiedCapEth]`; settings in `engine/.env.example`.
+
+Checked: engine 47 tests (SIWE contents, single use, expiry, 404/400/401 handling, one-wallet-per-account, tiers). On
+the local stack with a mock of Base's API (`engine/scripts/mock-base-verify.ts`, dev only): a browser wallet registered,
+was told it wasn't verified (with the mini-app link), verified, and got the badge; a second wallet behind the same
+account was refused over HTTP (409); after the allowlist build the verified wallet had the 0.05 ETH verified cap and
+the other wallet the fresh-pool cap.
+
+---
+
 ## D2 — Wed 4 Nov 2026: third code-review round
 
 **Tool:** AI coding agent (a third `/code-review` pass, 13 findings, then "fix all of them").

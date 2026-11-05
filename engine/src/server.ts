@@ -13,6 +13,8 @@
  *   GET  /launches/:slug/wallets/:wallet               registered? tier, cap, proof, disputes
  *   GET  /launches/:slug/evidence.json[?version=n]    the evidence file, byte for byte
  *   POST /launches/:slug/disputes   {wallet, reason, signature}
+ *   GET  /launches/:slug/verify/message?wallet=        Base Verify SIWE message to sign (verified-human tier)
+ *   POST /launches/:slug/verify     {wallet, nonce, signature}  → verified | not_verified (+redirectUrl) | traits_not_satisfied
  *   POST /sandbox/runs                                start an attack run (rate limited)
  *   GET  /sandbox/runs/:id                            run state + events
  *   GET  /sandbox/runs/:id/stream                     server-sent events
@@ -193,6 +195,7 @@ const server = Bun.serve({
           ok: true,
           scan: !!envStr("BASE_RPC_URL"),
           launches: !!envStr("LAUNCH_RPC_URL"),
+          baseVerify: !!envStr("BASE_VERIFY_SECRET_KEY"),
           sandbox: !!envStr("SANDBOX_RPC_URL") && !!envStr("SANDBOX_RELAYER_KEY"),
         });
       }
@@ -220,6 +223,15 @@ const server = Bun.serve({
           if (!isAddress(w)) return fail(400, "wallet required");
           if (parts[3] === "register") return json({ message: registrationMessage(slug, w, rec.chainId) });
           if (parts[3] === "dispute") return json({ message: disputeMessage(slug, w, rec.chainId, (url.searchParams.get("reason") ?? "").trim()) });
+        }
+        if (parts[2] === "verify" && parts[3] === "message" && req.method === "GET") {
+          if (rateLimited(`vmsg:${ip}`, 20, 60_000)) return fail(429, "slow down");
+          return json(svc.verifyMessage(slug, url.searchParams.get("wallet") ?? ""));
+        }
+        if (parts[2] === "verify" && !parts[3] && req.method === "POST") {
+          if (rateLimited(`verify:${ip}`, 10, 60_000)) return fail(429, "slow down");
+          const body = (await req.json()) as { wallet: string; nonce: string; signature: Hex };
+          return json(await svc.submitVerification(slug, body.wallet, body.nonce, body.signature));
         }
         if (parts[2] === "register" && req.method === "POST") {
           if (rateLimited(`reg:${ip}`, 30, 60_000)) return fail(429, "slow down");

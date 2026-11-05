@@ -124,7 +124,7 @@ rt.service.create({
   tiers: {
     capWei: parseEther("0.01").toString(),
     freshPoolCapWei: parseEther("0.02").toString(),
-    verifiedCapWei: parseEther("0.01").toString(),
+    verifiedCapWei: parseEther("0.03").toString(), // verified humans (Base Verify, when enabled) get more
     freshMaxNonce: 0,
   },
   window: { delayAfterBuildSec: 1800, lengthSec: 1800, lockSec: 3600 },

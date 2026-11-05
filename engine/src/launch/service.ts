@@ -8,6 +8,7 @@ import { measureBlockTime } from "../scan/earlyBuyers";
 import type { WalletProfile } from "../types";
 import { disputeMessage, registrationMessage } from "./registration";
 import type { Dispute, LaunchRecord, LaunchStore } from "./store";
+import { BaseVerifyError, type BaseVerifyClient, type VerifyOutcome } from "../verify/baseVerify";
 
 export class LaunchError extends Error {
   constructor(
@@ -29,6 +30,8 @@ export interface LaunchDeps {
   exclusionsSource: Record<string, unknown>;
   fundingWindowHours: number;
   now?: () => number;
+  /** Base Verify client; null when BASE_VERIFY_SECRET_KEY isn't set (the verified tier is then off). */
+  baseVerify?: BaseVerifyClient | null;
 }
 
 export interface CreateLaunchInput {
@@ -60,6 +63,7 @@ export class LaunchService {
       ...input,
       createdAt: this.now(),
       registrations: [],
+      verifications: [],
       disputes: [],
       overrides: [],
       allowlist: null,
@@ -96,10 +100,12 @@ export class LaunchService {
       blockTime > 0 ? BigInt(Math.ceil((this.d.fundingWindowHours * 3600) / blockTime)) : snapshot;
     const wallets = rec.registrations.map((r) => r.wallet);
 
+    const verifiedSet = new Set((rec.verifications ?? []).map((v) => v.wallet));
     const profiles: WalletProfile[] = await Promise.all(
       wallets.map(async (wallet) => ({
         wallet,
         nonce: Number(BigInt(await rpc.call<Hex>("eth_getTransactionCount", [wallet, hex(snapshot)]))),
+        verified: verifiedSet.has(wallet),
       })),
     );
     const traced = await traceFunding(
@@ -171,6 +177,53 @@ export class LaunchService {
     return e;
   }
 
+  private verifier() {
+    if (!this.d.baseVerify) throw new LaunchError("Base Verify isn't enabled on this server", 503);
+    return this.d.baseVerify;
+  }
+
+  /** The SIWE message a registered wallet signs to verify with Base Verify (while registration is open). */
+  verifyMessage(slug: string, walletIn: string) {
+    const rec = this.get(slug);
+    if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
+    const wallet = getAddress(walletIn);
+    if (this.now() >= rec.registrationClosesAt) throw new LaunchError("registration is closed");
+    if (!rec.registrations.some((r) => r.wallet === wallet)) throw new LaunchError("register this wallet first");
+    return this.verifier().issueMessage(slug, wallet);
+  }
+
+  /**
+   * Check a signed verification message with Base Verify. One verified account can verify one wallet per
+   * launch: a second wallet behind the same account is refused.
+   */
+  async submitVerification(slug: string, walletIn: string, nonce: string, signature: Hex) {
+    const rec = this.get(slug);
+    if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
+    const wallet = getAddress(walletIn);
+    if (this.now() >= rec.registrationClosesAt) throw new LaunchError("registration is closed");
+    if (!rec.registrations.some((r) => r.wallet === wallet)) throw new LaunchError("register this wallet first");
+    let outcome: VerifyOutcome;
+    try {
+      outcome = await this.verifier().verify(slug, wallet, nonce, signature);
+    } catch (e) {
+      if (e instanceof BaseVerifyError) throw new LaunchError(e.message, e.status);
+      throw e;
+    }
+    if (outcome.kind !== "verified") return outcome;
+    const fresh = this.get(slug); // re-read: another request may have landed meanwhile
+    const list = fresh.verifications ?? [];
+    const sameAccount = list.find((v) => v.tokenHash === outcome.tokenHash);
+    if (sameAccount && sameAccount.wallet !== wallet) {
+      throw new LaunchError("this verified account already verified another wallet for this launch", 409);
+    }
+    if (!sameAccount) {
+      list.push({ wallet, tokenHash: outcome.tokenHash, at: this.now() });
+      fresh.verifications = list;
+      this.d.store.save(fresh);
+    }
+    return { kind: "verified" as const };
+  }
+
   /** What one wallet needs to see: registered? on the allowlist (live version)? its entry. */
   walletStatus(slug: string, walletIn: string) {
     if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
@@ -185,7 +238,8 @@ export class LaunchService {
       if (entry) entityMembers = all.filter((x) => x.entityId === entry!.entityId).length;
     }
     const disputes = rec.disputes.filter((d) => d.wallet === w).map(({ signature: _s, ...d }) => d);
-    return { wallet: w, registered: !!reg, registeredAt: reg?.at ?? null, entry, entityMembers, disputes };
+    const verified = (rec.verifications ?? []).some((v) => v.wallet === w);
+    return { wallet: w, registered: !!reg, registeredAt: reg?.at ?? null, verified, entry, entityMembers, disputes };
   }
 
   async dispute(slug: string, walletIn: string, reason: string, signature: Hex): Promise<Dispute> {
@@ -244,6 +298,8 @@ export class LaunchService {
       tiers: rec.tiers,
       window: rec.window,
       registrations: rec.registrations.length,
+      verifiedWallets: (rec.verifications ?? []).length,
+      baseVerify: !!this.d.baseVerify,
       disputes: rec.disputes.map(({ signature: _s, ...x }) => x),
       allowlist: rec.allowlist,
       onchain: rec.onchain,

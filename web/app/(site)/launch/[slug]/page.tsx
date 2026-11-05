@@ -70,6 +70,14 @@ export default function LaunchPage() {
         <Stat label="wallets registered" value={launch.registrations} />
         <Stat label="cap per entity" value={`${eth(launch.tiers.capWei)} ETH`} sub="linked wallets share one" />
         <Stat label="fresh-wallet pool" value={`${eth(launch.tiers.freshPoolCapWei)} ETH`} sub="shared by all fresh wallets" />
+        {launch.baseVerify && BigInt(launch.tiers.verifiedCapWei) > BigInt(launch.tiers.capWei) && (
+          <Stat
+            label="verified-human cap"
+            value={`${eth(launch.tiers.verifiedCapWei)} ETH`}
+            sub={`via Base Verify · ${launch.verifiedWallets ?? 0} verified`}
+            tone="accent"
+          />
+        )}
         {launch.allowlist && (
           <Stat
             label="entities on the allowlist"
@@ -174,9 +182,21 @@ function YourWallet({ launch, phase, now, onChange }: { launch: LaunchView; phas
           {launch.onchain ? <Onchain launch={launch} phase={phase} now={now} entityId={e.entityId as Hex} cap={BigInt(e.cap)} proof={e.proof as Hex[]} /> : <p className="small muted">Cap {eth(e.cap)} ETH. The launch isn&apos;t onchain yet.</p>}
         </>
       ) : status.registered ? (
-        <p className="small muted">
-          Registered{launch.allowlist ? ", but not on the live allowlist. You can dispute below." : ". Waiting for the allowlist to be built."}
-        </p>
+        <>
+          <p className="small muted">
+            Registered{status.verified && <> · <span className="pill pill-verified">verified human</span></>}
+            {launch.allowlist ? ", but not on the live allowlist. You can dispute below." : ". Your tier and cap appear once the allowlist is built."}
+          </p>
+          {status.verified && !launch.allowlist && (
+            <p className="small">
+              Verified with Base Verify: this wallet gets the {eth(launch.tiers.verifiedCapWei)} ETH verified-human cap when the
+              allowlist is built.
+            </p>
+          )}
+          {phase === "registration" && launch.baseVerify && !status.verified && BigInt(launch.tiers.verifiedCapWei) > BigInt(launch.tiers.capWei) && (
+            <VerifyHuman slug={launch.slug} capWei={launch.tiers.verifiedCapWei} onVerified={refresh} />
+          )}
+        </>
       ) : phase === "registration" ? (
         <button className="btn" onClick={register} disabled={busy}>
           {busy ? "Waiting for signature…" : "Register (free signature)"}
@@ -184,6 +204,59 @@ function YourWallet({ launch, phase, now, onChange }: { launch: LaunchView; phas
       ) : (
         <p className="small muted">This wallet did not register. After the window, anyone can trade.</p>
       )}
+    </div>
+  );
+}
+
+/** Base Verify: a registered wallet proves a verified account (e.g. Coinbase) for the larger cap. */
+function VerifyHuman({ slug, capWei, onVerified }: { slug: string; capWei: string; onVerified: () => void }) {
+  const { address } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "info" | "warn" | "error"; text: string } | null>(null);
+  const [redirect, setRedirect] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { message, nonce } = await api<{ message: string; nonce: string }>(`/launches/${slug}/verify/message?wallet=${address}`);
+      const signature = await signMessageAsync({ message });
+      const r = await post<{ kind: "verified" | "not_verified" | "traits_not_satisfied"; redirectUrl?: string }>(
+        `/launches/${slug}/verify`,
+        { wallet: address, nonce, signature },
+      );
+      if (r.kind === "verified") {
+        setRedirect(null);
+        setMsg({ tone: "info", text: "Verified. This wallet gets the verified-human cap when the allowlist is built." });
+        onVerified();
+      } else if (r.kind === "not_verified") {
+        setRedirect(r.redirectUrl ?? null);
+        setMsg({ tone: "warn", text: "No Base Verify verification for this wallet yet. Verify once with Base, then come back and try again." });
+      } else {
+        setMsg({ tone: "warn", text: "Your verified account doesn't meet this launch's requirements." });
+      }
+    } catch (e) {
+      setMsg({ tone: "error", text: (e as Error).message.split("\n")[0]! });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p className="small muted">
+        Verified humans get a larger cap ({eth(capWei)} ETH). One verified account can verify one wallet per launch.
+      </p>
+      <div className="row">
+        <button className="btn btn-ghost btn-sm" onClick={run} disabled={busy}>
+          {busy ? "Checking…" : redirect ? "I've verified, check again" : "Verify with Base Verify"}
+        </button>
+        {redirect && (
+          <a className="btn btn-sm" href={redirect} target="_blank" rel="noreferrer">
+            Open Base Verify
+          </a>
+        )}
+      </div>
+      {msg && <div style={{ marginTop: 8 }}><Notice tone={msg.tone}>{msg.text}</Notice></div>}
     </div>
   );
 }

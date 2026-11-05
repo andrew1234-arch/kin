@@ -15,6 +15,8 @@ export interface LaunchRecord {
   tiers: { capWei: string; freshPoolCapWei: string; verifiedCapWei: string; freshMaxNonce: number };
   window: { delayAfterBuildSec: number; lengthSec: number; lockSec: number };
   registrations: { wallet: Address; signature: Hex; at: number }[];
+  /** Base Verify results: the wallet and a hash of its (account, launch) token. Absent in older records. */
+  verifications?: { wallet: Address; tokenHash: Hex; at: number }[];
   disputes: Dispute[];
   /** Admin decisions from accepted disputes, applied on every rebuild. */
   overrides: { wallet: Address; action: "unlink"; disputeId: string }[];

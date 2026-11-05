@@ -5,6 +5,7 @@ import { Rpc } from "./data/rpc";
 import { LaunchService } from "./launch/service";
 import { LaunchStore } from "./launch/store";
 import { chainFor } from "./sandbox/relayer";
+import { BaseVerifyClient, baseVerifyConfigFromEnv } from "./verify/baseVerify";
 import { envNum, envRequired, envStr } from "./env";
 import { dataDir } from "./paths";
 
@@ -29,6 +30,7 @@ export function launchRuntime() {
   const rpcUrl = envStr("LAUNCH_RPC_URL");
   const chainId = envNum("LAUNCH_CHAIN_ID", 84532, { min: 1, integer: true });
   const scanOpts = scanOptionsFromEnv();
+  const baseVerifyCfg = baseVerifyConfigFromEnv();
   const pub: PublicClient | null = rpcUrl
     ? (createPublicClient({ chain: chainFor(chainId, rpcUrl), transport: http(rpcUrl) }) as PublicClient)
     : null;
@@ -47,6 +49,7 @@ export function launchRuntime() {
     excluded: scanOpts.excluded,
     exclusionsSource: scanOpts.exclusionsSource,
     fundingWindowHours: scanOpts.fundingWindowHours,
+    baseVerify: baseVerifyCfg ? new BaseVerifyClient(baseVerifyCfg) : null,
   });
   return { service, store, pub, chainId, rpcUrl };
 }
