@@ -4,6 +4,39 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D4 — Fri 6 Nov 2026: rubric scorecard, Nuno cluster engine port
+
+**Tool:** AI coding agent (Claude Code). **Prompt:** "use the metric to audit the current build in the repo and fix all
+that is wrong there asap", then "fetch from nuno repo ... and get the code you need". **Changed by hand:** nothing.
+
+- **Scorecard** (`SCORECARD.md`) against the Vibeathon 02 rules post: Execution 30, Launch potential 25, Originality 20,
+  Craft/UX 15, Vibecoding leverage 10, plus the holders' card. Main gap: the rules require a live URL by Mon 9 Nov
+  22:00 UTC and Kin has none; the replay has no real number yet.
+- **Network:** this machine reaches Base mainnet and Base Sepolia RPC (`mainnet.base.org`, `sepolia.base.org`).
+  Public Blockscout (`base.blockscout.com/api/v2`) answered the history probe with HTTP 403, so real funding history
+  still needs an Alchemy Base key.
+- **Cluster engine:** replaced the single shared-funder rule with a port of the Nuno engine
+  (`github.com/andrew1234-arch/nuno`, `packages/cluster` @ `ae62550`, MIT): weighted evidence per wallet pair, merged
+  at 1.0. Edges: wallet funds wallet 1.0 (Kin's rule), same hop-1 funder within 24 h 1.0, shared funding ancestor
+  within 2 hops 0.8, same-block early buy 0.5 (Scan, first ~60 s of trading). Distribution-hub cap (> 50 wallets) with
+  Nuno's farm exception (farm median raised from 10 MON to 0.5 ETH for Base). Not ported, because Kin does not collect
+  the data: token transfers, same-block sells, creator-funded.
+  **Behaviour change:** a shared 2-hop funder alone no longer links two wallets; it needs a second signal.
+- Link evidence now carries `reason` and `weight`; `via` is optional (same-block buys have no funder). Web evidence list,
+  cluster map and replay method text updated. Evidence-file `method.heuristic` describes the new rule.
+- A subprocess-spawning test file got a 30 s timeout (it ran 5.7 s against Bun's 5 s default on WSL).
+
+Checked: engine 50 tests (4 new for the port), contracts 31, web typecheck and build.
+
+Sat 7 Nov, same session: the local run scripts failed on Foundry 1.8.6, whose `cast wallet new --json` wraps the
+wallet in `{data: …}` (1.7.1 printed an array). `dev-local.sh`, `gate-a-local.sh`, `sandbox-local.sh` and
+`gate-b-local.sh` now accept both. Then, on the full local stack with the new cluster engine: demo launch registered
+11 wallets → allowlist (4 entities, 6 linked) → deployed → window buys (linked bundle 3 landed / 3 reverted) →
+finalized; Scan of the fixture token found 5 early buyers and one 3-wallet entity (`same_direct_funder`), the 2
+exchange-funded buyers unlinked; attack sandbox: Kin pool 10/20 landed (`EntityCapExceeded`), plain pool 20/20, 21.6 s.
+
+---
+
 ## D3 — Thu 5 Nov 2026: Base Verify tier
 
 **Tool:** AI coding agent. **Prompt:** "Continue the build". **Changed by hand:** nothing.

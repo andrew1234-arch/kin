@@ -4,7 +4,7 @@
 
 Clanker taxes everyone who's early. Kin only limits the ones who are secretly the same person.
 
-Wallets register for a launch. Registered wallets are grouped into entities by shared funding sources, and the
+Wallets register for a launch. Registered wallets are grouped into entities by weighted onchain evidence (shared funders, funding sources, same-block buys), and the
 evidence is published as a file whose hash is committed onchain before the window opens. Linked wallets share
 one cap, fresh wallets share one pooled cap, aged unlinked wallets get their own. During the window a Uniswap v4
 hook only accepts buys through the Kin router, within each entity's cap, and the tokens sit in a vault until the
@@ -18,6 +18,7 @@ engine/      Bun + TypeScript: Kin Scan, cluster engine, allowlist builder, laun
              replay job, Gate A, HTTP API (src/server.ts)
 web/         Next.js: /, /scan, /sandbox, /launch, /launch/[slug], /receipt/[slug], /embed/receipt/[slug], /replay
 BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
+SCORECARD.md the Vibeathon 02 rubric, scored with evidence and open gaps
 ```
 
 ## Status
@@ -25,7 +26,8 @@ BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 | Piece | State |
 |---|---|
 | Contracts | 31 tests pass (`cd contracts && forge test`) |
-| Engine | 47 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Engine | 50 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Cluster engine | Weighted evidence ported from [Nuno](https://github.com/andrew1234-arch/nuno) (same funder 1.0, shared source 0.8, same-block early buy 0.5, merge at 1.0, hub cap with farm exception) |
 | Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
 | Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |
