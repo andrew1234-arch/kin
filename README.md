@@ -1,3 +1,5 @@
+<p><img src="brand/kin-logo-on-light.png" alt="Kin" height="72"></p>
+
 # Kin
 
 **Token launches on Base that cap entities, not wallets.**
