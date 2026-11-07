@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { KinMark } from "@/components/KinMark";
 import { WalletButton } from "@/components/WalletButton";
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
@@ -6,9 +7,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     <>
       <header className="nav">
         <Link href="/" className="brand" aria-label="Kin home">
-          <span className="brand-mark" aria-hidden>
-            ◎
-          </span>
+          <KinMark />
           kin
         </Link>
         <nav className="nav-links">
