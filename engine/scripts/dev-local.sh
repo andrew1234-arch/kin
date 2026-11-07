@@ -14,8 +14,8 @@ trap 'kill ${PIDS[@]} 2>/dev/null || true' EXIT
 for _ in $(seq 1 50); do cast chain-id --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.2; done
 
 WALLET=$(cast wallet new --json)
-export DEPLOYER_PRIVATE_KEY=$(echo "$WALLET" | jq -r '.[0].private_key')
-DEPLOYER=$(echo "$WALLET" | jq -r '.[0].address')
+export DEPLOYER_PRIVATE_KEY=$(echo "$WALLET" | jq -r '(if type=="object" and has("data") then .data else . end | if type=="array" then .[0] else . end).private_key')
+DEPLOYER=$(echo "$WALLET" | jq -r '(if type=="object" and has("data") then .data else . end | if type=="array" then .[0] else . end).address')
 cast rpc --rpc-url "$RPC" anvil_setBalance "$DEPLOYER" 0x56BC75E2D63100000 >/dev/null
 
 cd "$ROOT/contracts"
