@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { setDefaultTimeout } from "bun:test";
+// These tests spawn the CLI scripts as subprocesses; process startup alone can take seconds on WSL/CI.
+setDefaultTimeout(30_000);
 import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

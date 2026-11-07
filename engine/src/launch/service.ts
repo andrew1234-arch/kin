@@ -1,6 +1,6 @@
 import { getAddress, isAddress, type Address, type Hex } from "viem";
 import { buildAllowlist, type AllowlistEntry } from "../allowlist/build";
-import { clusterByFunding } from "../cluster/cluster";
+import { CLUSTER_METHOD, clusterByFunding } from "../cluster/cluster";
 import { traceFunding } from "../cluster/funding";
 import type { HistoryProvider } from "../data/history";
 import { hex, Rpc } from "../data/rpc";
@@ -129,7 +129,7 @@ export class LaunchService {
       wallets: profiles,
       clusters,
       method: {
-        heuristic: "shared native-ETH funder within 2 hops, in the window before the snapshot",
+        heuristic: `${CLUSTER_METHOD}; native-ETH funding in the window before the snapshot`,
         fundingWindowHours: this.d.fundingWindowHours,
         measuredBlockTimeSec: blockTime,
         historyProvider: history.name,

@@ -15,7 +15,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { kinHookAbi, kinLaunchFactoryAbi, kinRouterAbi, kinVaultAbi } from "../abi/kin";
 import { buildAllowlist } from "../allowlist/build";
-import { clusterByFunding } from "../cluster/cluster";
+import { CLUSTER_METHOD, clusterByFunding } from "../cluster/cluster";
 import { registrationMessage } from "../launch/registration";
 import type { FundingEdge, WalletProfile } from "../types";
 
@@ -163,7 +163,7 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
     tiers: { capWei, freshPoolCapWei: capWei, verifiedCapWei: capWei, freshMaxNonce: 0 },
     wallets: profiles,
     clusters,
-    method: { heuristic: "shared-funder", maxHops: 2, source: "funding transactions observed by the sandbox relayer" },
+    method: { heuristic: CLUSTER_METHOD, maxHops: 2, source: "funding transactions observed by the sandbox relayer" },
   });
   emit({
     type: "step",

@@ -99,8 +99,10 @@ function ReportView({ r }: { r: ReplayReport }) {
         </p>
         {r.method && (
           <p className="muted small">
-            First {r.method.earlyBuyers} buyers per token; links are shared native-ETH funders within {r.method.maxHops} hops in
-            the {r.method.fundingWindowHours} hours before the first buy; labelled exchanges, bridges and routers never link.
+            First {r.method.earlyBuyers} buyers per token, grouped by weighted evidence (ported from the Nuno engine): same
+            direct funder 1.0, shared funding source within {r.method.maxHops} hops 0.8, same-block early buy 0.5, merged at
+            1.0, funding traced in the {r.method.fundingWindowHours} hours before the first buy; labelled exchanges, bridges
+            and routers never link.
             Counterfactual caps: {Number(r.method.caps.capWei) / 1e18} ETH per entity, {Number(r.method.caps.freshPoolCapWei) / 1e18} ETH
             shared by fresh wallets. {a.kinCounterfactual.unknownBuys} buys paid in a token were left out of the ETH figures.
           </p>

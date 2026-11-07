@@ -24,14 +24,16 @@ export function ClusterMap({ entity }: { entity: ScanResult["entities"][number] 
   const edges: { from: string; to: string; hop: number }[] = [];
   const seen = new Set<string>();
   for (const l of entity.links) {
+    if (!l.via) continue; // same-block buys have no funder to draw; they are listed in the evidence
+    const via = l.via;
     for (const [w, hop] of [
       [l.a, l.hops[0]],
       [l.b, l.hops[1]],
     ] as const) {
-      const k = `${w}-${l.via}`.toLowerCase();
-      if (seen.has(k) || w.toLowerCase() === l.via.toLowerCase()) continue;
+      const k = `${w}-${via}`.toLowerCase();
+      if (seen.has(k) || w.toLowerCase() === via.toLowerCase()) continue;
       seen.add(k);
-      edges.push({ from: w.toLowerCase(), to: l.via.toLowerCase(), hop });
+      edges.push({ from: w.toLowerCase(), to: via.toLowerCase(), hop });
     }
   }
   const nodeR = members.length > 16 ? 6 : 8;

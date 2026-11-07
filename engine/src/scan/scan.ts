@@ -1,5 +1,5 @@
 import { decodeFunctionResult, encodeFunctionData, erc20Abi, getAddress, type Address, type Hex } from "viem";
-import { clusterByFunding } from "../cluster/cluster";
+import { CLUSTER_METHOD, clusterByFunding } from "../cluster/cluster";
 import { traceFunding } from "../cluster/funding";
 import type { HistoryProvider } from "../data/history";
 import { hex, Rpc } from "../data/rpc";
@@ -99,7 +99,7 @@ export function methodParams(opts: ScanOptions, historyProvider: string) {
     fundingWindowHours: opts.fundingWindowHours,
     maxHops: opts.maxHops,
     maxScanBlocks: opts.maxScanBlocks.toString(),
-    linkRule: "shared native-ETH funder within maxHops before the first buy; excluded addresses never link",
+    linkRule: `${CLUSTER_METHOD}; funding traced before each first buy`,
     freshRule: `nonce before first buy <= ${opts.freshMaxNonce}`,
     caps: { capWei: opts.caps.capWei.toString(), freshPoolCapWei: opts.caps.freshPoolCapWei.toString() },
     counterfactualRule: "replay buys in chain order; a buy lands if its entity's cumulative ETH stays within the cap",
@@ -165,7 +165,14 @@ export async function scanToken(
   const clusters = clusterByFunding(
     buyers.map((b) => b.wallet),
     edges,
-    { maxHops: opts.maxHops, excluded: opts.excluded },
+    {
+      maxHops: opts.maxHops,
+      excluded: opts.excluded,
+      // Same-block early buys (Nuno's 0.5 signal): first minute of the token's trading.
+      trades: buyers.flatMap((b) => b.buys.map((x) => ({ wallet: b.wallet, block: x.block, txHash: x.tx }))),
+      createBlock: deployBlock,
+      earlyBuyBlocks: blockTime > 0 ? Math.max(1, Math.round(60 / blockTime)) : undefined,
+    },
   );
 
   // Entity assignment, mirroring the allowlist tiers: linked > fresh pool > aged.
@@ -207,7 +214,7 @@ export async function scanToken(
       id: key,
       tier: "linked" as const,
       members: c.members,
-      funders: [...new Set(c.links.map((l) => l.via))],
+      funders: [...new Set(c.links.flatMap((l) => (l.via ? [l.via] : [])))],
       links: c.links,
       tokens: tokens.toString(),
       shareOfEarlyBps: bps(tokens, totalEarly) ?? 0,

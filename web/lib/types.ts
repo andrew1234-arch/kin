@@ -2,9 +2,14 @@
 export interface Link {
   a: string;
   b: string;
-  reason: "shared-funder";
-  via: string;
+  /** Evidence type from the weighted cluster engine (Nuno port). A pair merges at weight 1.0. */
+  reason: "direct_funding" | "same_direct_funder" | "common_funding_source" | "same_block_early_buy";
+  weight: number;
+  /** Shared funder or ancestor (funding reasons only). */
+  via?: string;
   hops: [number, number];
+  /** Block of a same-block early buy. */
+  block?: string;
   txHashes: string[];
 }
 

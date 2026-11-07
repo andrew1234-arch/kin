@@ -28,16 +28,23 @@ export interface WalletProfile {
 
 export type Tier = "linked" | "fresh" | "aged" | "verified";
 
-/** One link between two wallets, with the transactions that prove it. */
+/** Evidence types of the weighted cluster engine (see src/cluster/cluster.ts). */
+export type LinkReason = "direct_funding" | "same_direct_funder" | "common_funding_source" | "same_block_early_buy";
+
+/** One weighted piece of evidence between two wallets, with the transactions that prove it. */
 export interface Link {
   a: Address;
   b: Address;
-  reason: "shared-funder";
-  /** The shared funder address. */
-  via: Address;
-  /** Hops from each wallet to the shared funder. */
+  reason: LinkReason;
+  /** Weight this evidence adds to the pair; a pair merges at 1.0. */
+  weight: number;
+  /** The shared funder or ancestor (funding reasons only). */
+  via?: Address;
+  /** Hops from each wallet to `via` (0 = the wallet itself; [0, 0] for same-block buys). */
   hops: [number, number];
-  /** Every transaction on both paths (a ← … ← via → … → b). */
+  /** Block of a same-block early buy (decimal string). */
+  block?: string;
+  /** Every transaction on both paths (a <- ... <- via -> ... -> b), or both buy transactions. */
   txHashes: Hex[];
 }
 

@@ -242,11 +242,19 @@ function EntityCard({ e, decimals, capEth }: { e: ScanResult["entities"][number]
         <ul className="evidence">
           {e.links.map((l, i) => (
             <li key={i}>
-              <Addr address={l.a} explorer={SCAN_EXPLORER} /> and <Addr address={l.b} explorer={SCAN_EXPLORER} /> share{" "}
-              <Addr address={l.via} explorer={SCAN_EXPLORER} />
-              <span className="faint">
-                ({l.hops[0]} / {l.hops[1]} hops)
-              </span>
+              <Addr address={l.a} explorer={SCAN_EXPLORER} /> and <Addr address={l.b} explorer={SCAN_EXPLORER} />{" "}
+              {l.reason === "same_block_early_buy" ? (
+                <>bought in the same early block {l.block}</>
+              ) : l.reason === "direct_funding" ? (
+                <>: one funded the other</>
+              ) : (
+                <>
+                  {l.reason === "same_direct_funder" ? "were funded by" : "share the funding source"}{" "}
+                  {l.via && <Addr address={l.via} explorer={SCAN_EXPLORER} />}
+                  <span className="faint"> ({l.hops[0]} / {l.hops[1]} hops)</span>
+                </>
+              )}
+              <span className="faint"> weight {l.weight}</span>
               <span>
                 {l.txHashes.map((h, j) => (
                   <span key={h}>
