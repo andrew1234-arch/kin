@@ -2,6 +2,7 @@
 contracts/out/
 contracts/cache/
 contracts/broadcast/*/31337/
+contracts/broadcast/**/*.recovery.lock
 contracts/deployments/31337*.json
 # env
 .env

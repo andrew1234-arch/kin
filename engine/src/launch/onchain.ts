@@ -29,6 +29,8 @@ export function adminClients(opts: { rpcUrl: string; chainId: number; adminKey: 
     wallet: createWalletClient({ chain, transport: http(opts.rpcUrl), account: privateKeyToAccount(opts.adminKey) }),
     factory: getAddress(dep.factory) as Address,
     hook: getAddress(dep.kinHook) as Address,
+    /** The hook's minimum review period (seconds), from the deployment file; 0 if it doesn't record one. */
+    minReviewPeriod: Number(dep.minReviewPeriod ?? 0),
   };
 }
 type Clients = ReturnType<typeof adminClients>;
@@ -58,7 +60,10 @@ export async function deployLaunch(svc: LaunchService, slug: string, c: Clients)
     commit = { root: zero, evidenceHash: policy.hash, stats: { allowlistedWallets: 0, entities: 0, linkedWallets: 0, freshWallets: 0 }, version: 0 };
   }
   const head = await c.pub.getBlock();
-  const windowStart = head.timestamp + BigInt(rec.window.delayAfterBuildSec);
+  // The hook requires windowStart >= (the block that mines this tx) + its review period. A delay equal to the
+  // review period would revert by the few seconds it takes to mine, so keep a two-minute margin when the hook has one.
+  const delay = c.minReviewPeriod > 0 ? Math.max(rec.window.delayAfterBuildSec, c.minReviewPeriod + 120) : rec.window.delayAfterBuildSec;
+  const windowStart = head.timestamp + BigInt(delay);
   const hash = await c.wallet.writeContract({
     address: c.factory,
     abi: kinLaunchFactoryAbi,

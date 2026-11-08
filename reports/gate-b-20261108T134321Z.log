@@ -1,0 +1,29 @@
+No files changed, compilation skipped
+Script ran successfully.
+
+== Logs ==
+  other router rejected with KinHook.UntrustedRouter: OK
+  KinRouter buy landed: wei in 500000000000000
+  KinRouter buy: tokens vaulted 49418345577835110161803
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 84532
+
+Estimated max fee per gas: 0.010000001 gwei
+Estimated base fee per gas: 0.005 gwei
+Estimated max priority fee per gas: 0.000000001 gwei
+
+Estimated total gas used for script: 546925
+
+Estimated amount required: 0.000005469250546925 ETH
+
+==========================
+
+Transactions saved to: /home/dev/kin-clone/contracts/broadcast/GateB.s.sol/84532/run-latest.json
+
+Sensitive values saved to: /home/dev/kin-clone/contracts/cache/GateB.s.sol/84532/run-latest.json
+
+Error: After 5 attempts, provider nonce (16) is still behind expected nonce (17).

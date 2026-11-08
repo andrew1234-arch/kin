@@ -41,11 +41,6 @@ export interface LaunchDeps {
   permitSigner?: LocalAccount | null;
 }
 
-/** Permits can be requested this long before the window opens (to show a buyer their limit early). */
-export const PERMIT_PREVIEW_SEC = 600;
-/** A permit is valid for this long after it is issued (or after the window opens, if issued before). */
-export const PERMIT_TTL_SEC = 600;
-
 export interface CreateLaunchInput {
   slug: string;
   chainId: number;
@@ -355,7 +350,6 @@ export class LaunchService {
     const o = rec.onchain;
     if (!o) throw new LaunchError("launch is not deployed yet", 409);
     const now = this.now();
-    if (now < o.windowStart - PERMIT_PREVIEW_SEC) throw new LaunchError("limits are handed out from 10 minutes before the window opens", 425);
     if (now >= o.windowEnd) throw new LaunchError("the window has closed: trading is open to everyone", 410);
     const signer = this.d.permitSigner;
     if (!signer) throw new LaunchError("PERMIT_SIGNER_KEY is not set on this server", 503);
@@ -398,7 +392,9 @@ export class LaunchService {
       });
     }
 
-    const deadline = Math.min(o.windowEnd, Math.max(now, o.windowStart) + PERMIT_TTL_SEC);
+    // Valid until the window closes: the assignment never changes and the permit only works for this wallet, so a
+    // wallet that has its permit can still buy if the engine goes offline later in the window.
+    const deadline = o.windowEnd;
     const proof = await signPermit(signer, {
       chainId: rec.chainId,
       hook: o.key.hooks,

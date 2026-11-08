@@ -1,0 +1,79 @@
+No files changed, compilation skipped
+Traces:
+  [1348705] → new GateBCreateLaunch@0x9f7cF1d1F558E57ef88a59ac3D47214eF25B6A06
+    └─ ← [Return] 6626 bytes of code
+
+  [814290] GateBCreateLaunch::run()
+    ├─ [0] VM::envUint("DEPLOYER_PRIVATE_KEY") [staticcall]
+    │   └─ ← [Return] <env var value>
+    ├─ [0] VM::toString(84532 [8.453e4]) [staticcall]
+    │   └─ ← [Return] "84532"
+    ├─ [0] VM::readFile("deployments/84532.json") [staticcall]
+    │   └─ ← [Return] <file>
+    ├─ [0] VM::parseJsonAddress("<stringified JSON>", ".factory") [staticcall]
+    │   └─ ← [Return] 0xb37106d9B490905A0e93C1FC94a73A18737d5767
+    ├─ [0] VM::addr(<pk>) [staticcall]
+    │   └─ ← [Return] 0x5606da7e22630e960d75955Ce710622B322a9b16
+    ├─ [0] VM::envOr("GATE_B_CAP_WEI", 1000000000000000 [1e15]) [staticcall]
+    │   └─ ← [Return] <env var value>
+    ├─ [0] VM::parseJsonAddress("<stringified JSON>", ".kinHook") [staticcall]
+    │   └─ ← [Return] 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0
+    ├─ [259] 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0::minReviewPeriod() [staticcall]
+    │   └─ ← [Return] 1800
+    ├─ [0] VM::envOr("GATE_B_DELAY_SECONDS", 1830) [staticcall]
+    │   └─ ← [Return] <env var value>
+    ├─ [0] VM::readFile("launch-params.json") [staticcall]
+    │   └─ ← [Return] <file>
+    ├─ [0] VM::parseJsonString("<stringified JSON>", ".totalSupply") [staticcall]
+    │   └─ ← [Return] "1000000000000000000000000000"
+    ├─ [0] VM::parseUint("1000000000000000000000000000") [staticcall]
+    │   └─ ← [Return] 1000000000000000000000000000 [1e27]
+    ├─ [0] VM::parseJsonString("<stringified JSON>", ".creatorAllocation") [staticcall]
+    │   └─ ← [Return] "0"
+    ├─ [0] VM::parseUint("0") [staticcall]
+    │   └─ ← [Return] 0
+    ├─ [0] VM::parseJsonUint("<stringified JSON>", ".fee") [staticcall]
+    │   └─ ← [Return] 10000 [1e4]
+    ├─ [0] VM::parseJsonInt("<stringified JSON>", ".tickSpacing") [staticcall]
+    │   └─ ← [Return] 200
+    ├─ [0] VM::parseJsonInt("<stringified JSON>", ".startTick") [staticcall]
+    │   └─ ← [Return] 184200 [1.842e5]
+    ├─ [0] VM::parseJsonInt("<stringified JSON>", ".tickLower") [staticcall]
+    │   └─ ← [Return] 69000 [6.9e4]
+    ├─ [0] VM::startBroadcast(<pk>)
+    │   └─ ← [Return]
+    ├─ [784476] 0xb37106d9B490905A0e93C1FC94a73A18737d5767::createLaunch(LaunchParams({ name: "Kin Gate B", symbol: "KGB", totalSupply: 1000000000000000000000000000 [1e27], creatorAllocation: 0, fee: 10000 [1e4], tickSpacing: 200, startTick: 184200 [1.842e5], tickLower: 69000 [6.9e4], root: 0xbef8e08c80dd9efbfe86004a00d5872632d3b1c900fa078b65125e59a2bc2a02, evidenceHash: 0xa575fa2db63acb0824fefce938397a8a0c5c1d9f1f7848e7cac633c4b9ee3b94, stats: AllowlistStats({ allowlistedWallets: 2, entities: 2, linkedWallets: 0, freshWallets: 0 }), windowStart: 1794144166 [1.794e9], windowEnd: 1794147766 [1.794e9], lockDuration: 120, salt: 0x2fb9a77a5d88cd8def9592c973352f207879f32d618732ed39fd71750464c55b }), false)
+    │   ├─ [445483] → new KinToken@0x891F3EF4Be4Db431DD7BD539aF65B57BCF7E632e
+    │   │   ├─ emit Transfer(from: 0x0000000000000000000000000000000000000000, to: 0xb37106d9B490905A0e93C1FC94a73A18737d5767, amount: 1000000000000000000000000000 [1e27])
+    │   │   └─ ← [Return] 1763 bytes of code
+    │   ├─ [29442] 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408::initialize(PoolKey({ currency0: 0x0000000000000000000000000000000000000000, currency1: 0x891F3EF4Be4Db431DD7BD539aF65B57BCF7E632e, fee: 10000 [1e4], tickSpacing: 200, hooks: 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0 }), 791647387308859959733601586197955 [7.916e32])
+    │   │   ├─ emit Initialize(id: 0xeb6380ca2a1d92200cf4acc448896fc504b5bd0f4c965c0905d50e9a48a3017c, currency0: 0x0000000000000000000000000000000000000000, currency1: KinToken: [0x891F3EF4Be4Db431DD7BD539aF65B57BCF7E632e], fee: 10000 [1e4], tickSpacing: 200, hooks: 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0, sqrtPriceX96: 791647387308859959733601586197955 [7.916e32], tick: 184200 [1.842e5])
+    │   │   └─ ← [Return] 184200 [1.842e5]
+    │   ├─ [177677] 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408::unlock(0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000891f3ef4be4db431dd7bd539af65b57bcf7e632e000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000000000c80000000000000000000000004aec96a3ccae1bb7c05dd56f98b2ae54ff8b00c00000000000000000000000000000000000000000000000000000000000010d88000000000000000000000000000000000000000000000000000000000002cf880000000000000000000000000000000000000000000015428244d6e435855c56)
+    │   │   ├─ [175661] 0xb37106d9B490905A0e93C1FC94a73A18737d5767::unlockCallback(0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000891f3ef4be4db431dd7bd539af65b57bcf7e632e000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000000000c80000000000000000000000004aec96a3ccae1bb7c05dd56f98b2ae54ff8b00c00000000000000000000000000000000000000000000000000000000000010d88000000000000000000000000000000000000000000000000000000000002cf880000000000000000000000000000000000000000000015428244d6e435855c56)
+    │   │   │   ├─ [140671] 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408::modifyLiquidity(PoolKey({ currency0: 0x0000000000000000000000000000000000000000, currency1: 0x891F3EF4Be4Db431DD7BD539aF65B57BCF7E632e, fee: 10000 [1e4], tickSpacing: 200, hooks: 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0 }), ModifyLiquidityParams({ tickLower: 69000 [6.9e4], tickUpper: 184200 [1.842e5], liquidityDelta: 100396568112926365670486 [1.003e23], salt: 0x0000000000000000000000000000000000000000000000000000000000000000 }), 0x)
+    │   │   │   │   ├─ emit ModifyLiquidity(id: 0xeb6380ca2a1d92200cf4acc448896fc504b5bd0f4c965c0905d50e9a48a3017c, sender: 0xb37106d9B490905A0e93C1FC94a73A18737d5767, tickLower: 69000 [6.9e4], tickUpper: 184200 [1.842e5], liquidityDelta: 100396568112926365670486 [1.003e23], salt: 0x0000000000000000000000000000000000000000000000000000000000000000)
+    │   │   │   │   └─ ← [Return] 340282366919938463463374607431768219305 [3.402e38], 0
+    │   │   │   ├─ [3932] 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408::sync(KinToken: [0x891F3EF4Be4Db431DD7BD539aF65B57BCF7E632e])
+    │   │   │   │   ├─ [2559] KinToken::balanceOf(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408) [staticcall]
+    │   │   │   │   │   └─ ← [Return] 0
+    │   │   │   │   └─ ← [Stop]
+    │   │   │   ├─ [23182] KinToken::transfer(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408, 999999999999999999999992151 [9.999e26])
+    │   │   │   │   ├─ emit Transfer(from: 0xb37106d9B490905A0e93C1FC94a73A18737d5767, to: 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408, amount: 999999999999999999999992151 [9.999e26])
+    │   │   │   │   └─ ← [Return] true
+    │   │   │   ├─ [2533] 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408::settle()
+    │   │   │   │   ├─ [559] KinToken::balanceOf(0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408) [staticcall]
+    │   │   │   │   │   └─ ← [Return] 999999999999999999999992151 [9.999e26]
+    │   │   │   │   └─ ← [Return] 999999999999999999999992151 [9.999e26]
+    │   │   │   └─ ← [Return] 0x0000000000000000000000000000000000000000033b2e3c9fd0803ce7ffe157
+    │   │   └─ ← [Return] 0x0000000000000000000000000000000000000000033b2e3c9fd0803ce7ffe157
+    │   ├─ [25182] KinToken::transfer(0x5606da7e22630e960d75955Ce710622B322a9b16, 7849)
+    │   │   ├─ emit Transfer(from: 0xb37106d9B490905A0e93C1FC94a73A18737d5767, to: 0x5606da7e22630e960d75955Ce710622B322a9b16, amount: 7849)
+    │   │   └─ ← [Return] true
+    │   ├─ [6433] 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0::configureLaunch(PoolKey({ currency0: 0x0000000000000000000000000000000000000000, currency1: 0x891F3EF4Be4Db431DD7BD539aF65B57BCF7E632e, fee: 10000 [1e4], tickSpacing: 200, hooks: 0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0 }), LaunchConfig({ root: 0xbef8e08c80dd9efbfe86004a00d5872632d3b1c900fa078b65125e59a2bc2a02, evidenceHash: 0xa575fa2db63acb0824fefce938397a8a0c5c1d9f1f7848e7cac633c4b9ee3b94, windowStart: 1794144166 [1.794e9], windowEnd: 1794147766 [1.794e9], lockDuration: 120, buyIsZeroForOne: true, admin: 0x5606da7e22630e960d75955Ce710622B322a9b16, stats: AllowlistStats({ allowlistedWallets: 2, entities: 2, linkedWallets: 0, freshWallets: 0 }), totalSupply: 1000000000000000000000000000 [1e27], creatorAllocation: 0 }))
+    │   │   └─ ← [Revert] InvalidConfig()
+    │   └─ ← [Revert] InvalidConfig()
+    └─ ← [Revert] InvalidConfig()
+
+
+Error: script failed: InvalidConfig()

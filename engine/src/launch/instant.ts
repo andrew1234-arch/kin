@@ -3,9 +3,10 @@ import { canonicalJson } from "../allowlist/canonical";
 import type { FundingEdge } from "../types";
 
 /**
- * Instant launches: no registration and no allowlist. When a wallet asks to buy, the engine traces its funding
- * (the same trace the allowlist builder and Kin Scan use), assigns it to an entity, and signs a short-lived
- * KinPermit that KinHook checks in the swap. Assignments are append-only and public, so every limit the engine
+ * Instant launches: no registration and no allowlist. When a wallet asks for its limit (any time from deploy until
+ * the window closes), the engine traces its funding (the same trace the allowlist builder and Kin Scan use), assigns
+ * it to an entity, and signs a KinPermit valid until the window closes, which KinHook checks in the swap. A wallet
+ * that has its permit can buy even if the engine goes offline later. Assignments are append-only and public, so every limit the engine
  * handed out can be audited against the chain (WindowBuy events carry the entity each buy was charged to).
  */
 

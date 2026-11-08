@@ -26,8 +26,6 @@ const INSTANT_PHASES: { key: Phase[]; label: string }[] = [
   { key: ["locked"], label: "Lock" },
   { key: ["claimable"], label: "Open" },
 ];
-/** The engine hands out instant-launch limits from this long before the window opens. */
-const PERMIT_PREVIEW_SEC = 600;
 
 export default function LaunchPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -41,12 +39,24 @@ export default function LaunchPage() {
       .then((l) => {
         setLaunch(l);
         setFromMirror(false);
+        try {
+          localStorage.setItem(`kin:launch:${slug}`, JSON.stringify(l));
+        } catch {}
       })
       .catch(async (e: ApiError) => {
-        // Engine unreachable: fall back to the published static copy, so buyers still get their proofs.
+        // Engine unreachable: fall back to the published static copy (allowlist proofs), else to the last copy
+        // this browser saw, so a buyer with a saved permit can still buy.
         const m = e.status >= 500 ? await launchMirror(slug) : null;
-        if (m) {
-          setLaunch(m.launch);
+        let saved: LaunchView | null = null;
+        if (!m && e.status >= 500) {
+          try {
+            const raw = localStorage.getItem(`kin:launch:${slug}`);
+            saved = raw ? (JSON.parse(raw) as LaunchView) : null;
+          } catch {}
+        }
+        const fallback = m?.launch ?? saved;
+        if (fallback) {
+          setLaunch((cur) => cur ?? fallback);
           setFromMirror(true);
         } else setError(e.message);
       });
@@ -120,7 +130,11 @@ export default function LaunchPage() {
       </ol>
       <PhaseLine launch={launch} phase={phase} now={now} />
       {fromMirror && (
-        <Notice tone="warn">The Kin engine is unreachable; showing the launch&apos;s published copy. Buying and claiming still work.</Notice>
+        <Notice tone="warn">
+          {instant
+            ? "The Kin engine is unreachable, so new wallets can't get a limit right now. If you checked your limit earlier in this browser, buying and claiming still work."
+            : "The Kin engine is unreachable; showing the launch's published copy. Buying and claiming still work."}
+        </Notice>
       )}
 
       <div className="stats">
@@ -176,7 +190,7 @@ function PhaseLine({ launch, phase, now }: { launch: LaunchView; phase: Phase; n
       registration: "Deploying the launch.",
       building: "Deploying the launch.",
       dispute: o
-        ? `No registration. The window opens in ${duration(o.windowStart - now)}; limits are handed out from 10 minutes before.`
+        ? `No registration. The window opens in ${duration(o.windowStart - now)}. Check your limit now: your permit is saved in this browser.`
         : "",
       window: o ? `Window open for ${duration(o.windowEnd - now)}. Connect and buy: Kin checks your wallet's funding when you buy and sets your limit.` : "",
       locked: o ? `Window closed; trading is open to everyone. Window buys unlock in ${duration(o.windowEnd + o.lockDuration - now)}.` : "",
@@ -484,37 +498,47 @@ function InstantWallet({ launch, phase, now, onChange }: { launch: LaunchView; p
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const [permit, setPermit] = useState<Permit | null>(null);
+  const cacheKey = address ? `kin:permit:${launch.slug}:${address.toLowerCase()}` : null;
   const [status, setStatus] = useState<WalletStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const o = launch.onchain;
 
   useEffect(() => {
-    setPermit(null);
     setErr(null);
+    // A permit fetched earlier in this browser still works if the engine is offline now.
+    let cached: Permit | null = null;
+    try {
+      const raw = cacheKey ? localStorage.getItem(cacheKey) : null;
+      const p = raw ? (JSON.parse(raw) as Permit) : null;
+      cached = p && p.deadline > Date.now() / 1000 ? p : null;
+    } catch {
+      cached = null;
+    }
+    setPermit(cached);
     if (!address) return setStatus(null);
     api<WalletStatus>(`/launches/${launch.slug}/wallets/${address}`).then(setStatus).catch(() => setStatus(null));
-  }, [address, launch.slug]);
+  }, [address, cacheKey, launch.slug]);
 
   const check = useCallback(async () => {
     if (!address) return;
     setBusy(true);
     setErr(null);
     try {
-      setPermit(await post<Permit>(`/launches/${launch.slug}/permit`, { wallet: address }));
+      const p = await post<Permit>(`/launches/${launch.slug}/permit`, { wallet: address });
+      setPermit(p);
+      try {
+        if (cacheKey) localStorage.setItem(cacheKey, JSON.stringify(p));
+      } catch {
+        // storage blocked: the permit still works for this visit
+      }
       onChange();
     } catch (e) {
       setErr((e as Error).message.split("\n")[0]!);
     } finally {
       setBusy(false);
     }
-  }, [address, launch.slug, onChange]);
-
-  // A permit lasts 10 minutes; fetch a new one (same entity, same limit) before it runs out.
-  const expiring = !!permit && phase === "window" && now >= permit.deadline - 60;
-  useEffect(() => {
-    if (expiring && !busy) check();
-  }, [expiring, busy, check]);
+  }, [address, cacheKey, launch.slug, onChange]);
 
   if (!isConnected || !address) {
     return (
@@ -526,7 +550,7 @@ function InstantWallet({ launch, phase, now, onChange }: { launch: LaunchView; p
       </div>
     );
   }
-  const handingOut = !!o && now >= o.windowStart - PERMIT_PREVIEW_SEC && now < o.windowEnd;
+  const handingOut = !!o && now < o.windowEnd;
   const known = permit ?? (status?.entry ? { ...status.entry, entityMembers: status.entityMembers ?? 1 } : null);
   return (
     <div className="card">
@@ -554,12 +578,11 @@ function InstantWallet({ launch, phase, now, onChange }: { launch: LaunchView; p
             {busy ? "Tracing funding…" : known ? "Get my permit" : "Check my limit"}
           </button>
           <p className="small faint" style={{ marginTop: 10 }}>
-            Kin reads this wallet&apos;s funding (two hops, exchanges excluded) and signs a 10-minute permit for your limit. Nothing to
-            sign; nothing is spent.
+            Kin reads this wallet&apos;s funding (two hops, exchanges excluded) and signs a permit for your limit that lasts until the
+            window closes. It is saved in this browser, so you can still buy if Kin&apos;s engine goes offline. Nothing to sign;
+            nothing is spent.
           </p>
         </>
-      ) : o && now < o.windowStart - PERMIT_PREVIEW_SEC ? (
-        <p className="small muted">Limits are handed out from 10 minutes before the window opens ({duration(o.windowStart - PERMIT_PREVIEW_SEC - now)}).</p>
       ) : o ? (
         <p className="small muted">This wallet did not buy in the window. Trading is open to everyone now.</p>
       ) : (

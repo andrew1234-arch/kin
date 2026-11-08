@@ -10,7 +10,7 @@ export class Rpc {
   private queue: (() => void)[] = [];
 
   constructor(
-    private readonly url: string,
+    readonly url: string,
     private readonly opts: { concurrency?: number; retries?: number } = {},
   ) {}
 

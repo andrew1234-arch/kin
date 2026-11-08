@@ -149,16 +149,16 @@ export default function HowItWorksPage() {
           <div className="hiw-instant reveal">
             <h3>Instant launches: the same limits, no registration</h3>
             <p>
-              A creator can launch without an allowlist. Buyers just connect. From 10 minutes before the window, a wallet that
-              asks to buy gets traced on the spot (the same two-hop funding trace) and assigned an entity: it joins an earlier
+              A creator can launch without an allowlist. Buyers just connect. Any time after the launch is deployed, a wallet that
+              asks for its limit gets traced on the spot (the same two-hop funding trace) and assigned an entity: it joins an earlier
               buyer&apos;s entity if they share a funder, the fresh pool if it is new, or gets its own limit. The engine signs a
-              10-minute permit for that entity and limit, and the KinHook checks the signature in the swap, then charges the
+              permit for that entity and limit, valid until the window closes, and the KinHook checks the signature in the swap, then charges the
               buy to the entity&apos;s running total exactly as above.
             </p>
             <p>
               What changes: no dispute period, so every assignment is public instead, with the funding link behind it, and
-              the rules&apos; hash is committed onchain at deploy. The engine has to be online through the window, and the hook
-              trusts its permit signer.
+              the rules&apos; hash is committed onchain at deploy. New wallets need the engine to be online to get a limit (a wallet
+              that already has its permit can buy without it), and the hook trusts its permit signer.
             </p>
           </div>
         </div>

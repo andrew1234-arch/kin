@@ -11,7 +11,8 @@ sources, same-block buys). Linked wallets share one cap, fresh wallets share one
 wallets get their own. A launch runs in one of two modes:
 
 - **Instant** (default): no registration. When a wallet asks to buy, the engine traces its funding on the spot,
-  assigns it an entity and signs a 10-minute EIP-712 permit for that entity and cap. KinHook checks the
+  assigns it an entity and signs an EIP-712 permit for that entity and cap, valid until the window closes (the
+  browser keeps it, so a wallet that has its permit can buy even if the engine goes offline). KinHook checks the
   signature against its permit signer in the swap. The rules' hash is committed onchain at deploy and every
   assignment is public at `/launches/<slug>/permits`.
 - **Allowlist**: wallets register first; the entities go into a Merkle root and an evidence file whose hash is

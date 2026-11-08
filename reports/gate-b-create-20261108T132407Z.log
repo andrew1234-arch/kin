@@ -1,0 +1,32 @@
+No files changed, compilation skipped
+Script ran successfully.
+
+== Logs ==
+  launch index 0
+  window opens at 1794146130
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 84532
+
+Estimated max fee per gas: 0.010000001 gwei
+Estimated base fee per gas: 0.005 gwei
+Estimated max priority fee per gas: 0.000000001 gwei
+
+Estimated total gas used for script: 1398144
+
+Estimated amount required: 0.000013981441398144 ETH
+
+==========================
+
+
+==========================
+
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+
+Transactions saved to: /home/dev/kin-clone/contracts/broadcast/GateB.s.sol/84532/run-latest.json
+
+Sensitive values saved to: /home/dev/kin-clone/contracts/cache/GateB.s.sol/84532/run-latest.json
+

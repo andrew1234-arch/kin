@@ -265,7 +265,7 @@ export function LaunchConfigurator() {
           <fieldset>
             <legend>Timing</legend>
             {instant ? (
-              <Field id="startsMin" label="Window opens in" suffix="min" inputMode="decimal" value={f.startsMin} onChange={set("startsMin")} error={show("startsMin")} hint="From deploy. Limits are handed out from 10 minutes before." />
+              <Field id="startsMin" label="Window opens in" suffix="min" inputMode="decimal" value={f.startsMin} onChange={set("startsMin")} error={show("startsMin")} hint="From deploy. Buyers can check their limit as soon as it is deployed." />
             ) : (
               <div className="field-pair">
                 <Field id="regHours" label="Registration" suffix="hours" inputMode="decimal" value={f.regHours} onChange={set("regHours")} error={show("regHours")} />
@@ -336,9 +336,9 @@ export function LaunchConfigurator() {
                   : "Fix the highlighted fields above to generate this command."}
             </Cmd>
             <Cmd step="02" title="Share the launch page">
-              Buyers connect a wallet at <code className="mono">/launch/{slug}</code>. From 10 minutes before the window, each wallet
-              gets its limit when it asks: the engine traces its funding, puts it in an entity and signs a 10-minute permit. Keep
-              the engine online through the window.
+              Buyers connect a wallet at <code className="mono">/launch/{slug}</code>. From deploy until the window closes, each wallet
+              gets its limit when it asks: the engine traces its funding, puts it in an entity and signs a permit that lasts until
+              the window closes. Ask buyers to check early. Keep the engine online: new wallets need it to get a limit.
             </Cmd>
             <Cmd step="03" title="After the window" cmd={`bun run admin finalize ${slug}`}>
               Optional. The Fairness Receipt is final at the end of the window and lives at <code className="mono">/receipt/{slug}</code>;

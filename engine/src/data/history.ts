@@ -1,5 +1,5 @@
 import { getAddress, type Address, type Hex } from "viem";
-import { hex, Rpc } from "./rpc";
+import { hex, Rpc, RpcError } from "./rpc";
 import { TRANSFER_TOPIC } from "../scan/earlyBuyers";
 import { ConfigError, envRequired, envStr } from "../env";
 
@@ -38,15 +38,30 @@ export interface HistoryProvider {
   calls(): Map<string, number>;
 }
 
-/** Alchemy `alchemy_getAssetTransfers`, sent to BASE_RPC_URL (an Alchemy Base endpoint). */
+/** Rpc endpoints where Alchemy refused the "internal" category (it only serves it on Ethereum and Polygon). */
+const noInternalTransfers = new Set<string>();
+
+/**
+ * Alchemy `alchemy_getAssetTransfers`, sent to BASE_RPC_URL (an Alchemy Base endpoint). On Base, Alchemy serves
+ * external (wallet-to-wallet) ETH transfers but not internal ones (contract-to-wallet), so ETH paid out by a
+ * contract (a disperse contract, some exchange payouts) is not seen here; ERC-20 funding is.
+ */
 export class AlchemyHistory implements HistoryProvider {
   readonly name = "alchemy";
   constructor(private readonly rpc: Rpc) {}
   calls() {
     return this.rpc.calls;
   }
-  incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number, order: Order = "desc") {
-    return this.transfers(address, fromBlock, toBlock, limit, order, ["external", "internal"]);
+  async incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number, order: Order = "desc") {
+    if (!noInternalTransfers.has(this.rpc.url)) {
+      try {
+        return await this.transfers(address, fromBlock, toBlock, limit, order, ["external", "internal"]);
+      } catch (e) {
+        if (!(e instanceof RpcError && e.code === -32602 && /internal/i.test(e.message))) throw e;
+        noInternalTransfers.add(this.rpc.url);
+      }
+    }
+    return this.transfers(address, fromBlock, toBlock, limit, order, ["external"]);
   }
 
   incomingTokens(address: Address, tokens: Address[], fromBlock: bigint, toBlock: bigint, limit: number) {

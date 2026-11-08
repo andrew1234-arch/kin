@@ -6,15 +6,17 @@
 # so its window can open within seconds.
 #
 # Settings come from the environment, then contracts/.env, then engine/.env (earlier wins; blank = unset):
-#   BASE_SEPOLIA_RPC_URL, DEPLOYER_PRIVATE_KEY (funded with Base Sepolia ETH),
+#   BASE_SEPOLIA_RPC_URL (default: the public https://sepolia.base.org), DEPLOYER_PRIVATE_KEY (funded with Base Sepolia ETH),
 #   SANDBOX_RELAYER_KEY (funded; defaults to the deployer key), optional SANDBOX_EXPLORER_URL.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/engine/scripts/run-env.sh"
 load_env "$ROOT/contracts/.env" "$ROOT/engine/.env"
-: "${BASE_SEPOLIA_RPC_URL:?set BASE_SEPOLIA_RPC_URL}" "${DEPLOYER_PRIVATE_KEY:?set DEPLOYER_PRIVATE_KEY}"
+: "${BASE_SEPOLIA_RPC_URL:=https://sepolia.base.org}" "${DEPLOYER_PRIVATE_KEY:?set DEPLOYER_PRIVATE_KEY}"
 RPC="$BASE_SEPOLIA_RPC_URL"
 [ "$(cast chain-id --rpc-url "$RPC")" = "84532" ] || { echo "BASE_SEPOLIA_RPC_URL is not Base Sepolia"; exit 1; }
+DEPLOYER=$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")
+echo "== deployer $DEPLOYER: $(cast balance "$DEPLOYER" --rpc-url "$RPC" --ether) ETH on Base Sepolia"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$ROOT/reports"
 cd "$ROOT/contracts"
@@ -69,14 +71,24 @@ fi
 num() { awk '{print $1}'; } # strip cast's "[1e15]" annotations
 FACTORY=$(jq -r .factory "$DEP"); HOOK=$(jq -r .kinHook "$DEP"); VAULT=$(jq -r .kinVault "$DEP")
 
-echo "== Gate B: create launch"
-BEFORE=$(cast call "$FACTORY" "launchCount()(uint256)" --rpc-url "$RPC" | num)
-forge script script/GateB.s.sol:GateBCreateLaunch --rpc-url "$RPC" --broadcast --slow > "$ROOT/reports/gate-b-create-${STAMP}.log" 2>&1 || true
-AFTER=$(cast call "$FACTORY" "launchCount()(uint256)" --rpc-url "$RPC" | num)
-if [ "$AFTER" -le "$BEFORE" ] || [ "$(jq -r .launchIndex deployments/84532-gateb.json 2>/dev/null)" != "$((AFTER - 1))" ]; then
-  tail -20 "$ROOT/reports/gate-b-create-${STAMP}.log"; echo "GATE B: launch creation failed (factory launchCount $BEFORE -> $AFTER)"; exit 1
+# A Gate B launch from an interrupted run is reused while its window is still ahead or open (its window opens
+# only after the hook's review period, so creating a new one means another ~30 min wait).
+GB=deployments/84532-gateb.json
+COUNT=$(cast call "$FACTORY" "launchCount()(uint256)" --rpc-url "$RPC" | num)
+if [ -f "$GB" ] && [ "$COUNT" -gt 0 ] && [ "$(jq -r .launchIndex "$GB")" = "$((COUNT - 1))" ] \
+  && [ "$(cast block latest -f timestamp --rpc-url "$RPC")" -lt "$(jq -r .windowEnd "$GB")" ]; then
+  echo "== Gate B: reusing launch $((COUNT - 1)) (window opens at $(jq -r .windowStart "$GB"))"
+  AFTER=$COUNT
+else
+  echo "== Gate B: create launch"
+  BEFORE=$COUNT
+  forge script script/GateB.s.sol:GateBCreateLaunch --rpc-url "$RPC" --broadcast --slow > "$ROOT/reports/gate-b-create-${STAMP}.log" 2>&1 || true
+  AFTER=$(cast call "$FACTORY" "launchCount()(uint256)" --rpc-url "$RPC" | num)
+  if [ "$AFTER" -le "$BEFORE" ] || [ "$(jq -r .launchIndex "$GB" 2>/dev/null)" != "$((AFTER - 1))" ]; then
+    tail -20 "$ROOT/reports/gate-b-create-${STAMP}.log"; echo "GATE B: launch creation failed (factory launchCount $BEFORE -> $AFTER)"; exit 1
+  fi
+  grep -E "launch index|window opens" "$ROOT/reports/gate-b-create-${STAMP}.log" || true
 fi
-grep -E "launch index|window opens" "$ROOT/reports/gate-b-create-${STAMP}.log" || true
 OPENS=$(jq -r .windowStart deployments/84532-gateb.json)
 echo "== waiting for the window (opens at $OPENS)"
 until [ "$(cast block latest -f timestamp --rpc-url "$RPC")" -ge "$OPENS" ]; do sleep 3; done

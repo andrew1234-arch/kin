@@ -22,8 +22,10 @@ with no registration, because the sign-up step was a blocker; then "start workin
 - **Engine** (`engine/src/launch/instant.ts`, `service.ts`, `onchain.ts`, `admin.ts`, `server.ts`):
   `POST /launches/:slug/permit` traces the wallet's funding at that moment (same two-hop trace, exchanges excluded),
   assigns it (linked to an earlier buyer or funder → that entity and cap; fresh → one shared fresh pool; otherwise
-  its own entity), stores the assignment append-only under the store lock, and signs a 10-minute permit. Permits
-  are handed out from 10 minutes before the window until it ends; contract wallets are refused.
+  its own entity), stores the assignment append-only under the store lock, and signs a permit. Contract wallets are
+  refused. (Revised the same day: permits were first 10-minute and only from 10 minutes before the window; now they
+  are handed out from deploy and valid until the window closes, and the launch page keeps the permit and the last
+  copy of the launch in the browser, so a wallet that checked early can buy through an engine outage.)
   `GET /launches/:slug/permits` publishes every assignment with its funding links. The rules are a canonical
   policy file whose keccak256 is committed onchain as the evidence hash at deploy (`evidence.json` serves it).
   `admin create-instant` creates and deploys in one step. Registration, build and disputes refuse instant launches.
@@ -38,7 +40,8 @@ with no registration, because the sign-up step was a blocker; then "start workin
 ### Trade-offs, stated
 
 - No dispute period: a wrong link can't be fixed before the buy. Every assignment is public instead.
-- The hook trusts the permit signer; the engine must be online through the window.
+- The hook trusts the permit signer. New wallets need the engine online to get a limit; wallets that already have
+  their permit don't.
 - Two entities that have both bought can't be merged later: the first buy pins each entity's cap and total.
 - A bundle of brand-new wallets lands in the shared fresh pool, which is bounded by its own cap, but it is first
   come, first served: a young bundle can use the pool up before genuine new wallets arrive (seen in the first local
