@@ -1,4 +1,4 @@
-import { decodeFunctionResult, encodeFunctionData, getAddress, isAddress, type Address, type Hex } from "viem";
+import { decodeFunctionResult, encodeFunctionData, getAddress, isAddress, type Address, type Hex, type LocalAccount } from "viem";
 import { kinHookAbi } from "../abi/kin";
 import { buildAllowlist, type AllowlistEntry } from "../allowlist/build";
 import { CLUSTER_METHOD, clusterByFunding } from "../cluster/cluster";
@@ -7,6 +7,7 @@ import type { HistoryProvider } from "../data/history";
 import { hex, Rpc } from "../data/rpc";
 import { measureBlockTime } from "../scan/earlyBuyers";
 import type { WalletProfile } from "../types";
+import { assignInstant, instantPolicy, signPermit, type PermitAssignment } from "./instant";
 import { disputeMessage, registrationMessage } from "./registration";
 import type { Dispute, LaunchRecord, LaunchStore } from "./store";
 import { BaseVerifyError, type BaseVerifyClient, type VerifyOutcome } from "../verify/baseVerify";
@@ -36,7 +37,14 @@ export interface LaunchDeps {
   now?: () => number;
   /** Base Verify client; null when BASE_VERIFY_SECRET_KEY isn't set (the verified tier is then off). */
   baseVerify?: BaseVerifyClient | null;
+  /** Signs buy permits for instant launches (PERMIT_SIGNER_KEY); must be the hook's permitSigner. */
+  permitSigner?: LocalAccount | null;
 }
+
+/** Permits can be requested this long before the window opens (to show a buyer their limit early). */
+export const PERMIT_PREVIEW_SEC = 600;
+/** A permit is valid for this long after it is issued (or after the window opens, if issued before). */
+export const PERMIT_TTL_SEC = 600;
 
 export interface CreateLaunchInput {
   slug: string;
@@ -47,6 +55,7 @@ export interface CreateLaunchInput {
   tiers: LaunchRecord["tiers"];
   window: LaunchRecord["window"];
   minBalanceWei?: string;
+  mode?: LaunchRecord["mode"];
 }
 
 export class LaunchService {
@@ -74,6 +83,7 @@ export class LaunchService {
       overrides: [],
       allowlist: null,
       onchain: null,
+      ...(input.mode === "instant" ? { permits: [] } : {}),
     };
     if (!this.d.store.create(rec)) throw new LaunchError("launch already exists", 409);
     return rec;
@@ -91,6 +101,7 @@ export class LaunchService {
 
   async register(slug: string, walletIn: string, signature: Hex) {
     const rec = this.get(slug);
+    if (rec.mode === "instant") throw new LaunchError("instant launches have no registration: connect and buy in the window");
     if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
     const wallet = getAddress(walletIn);
     if (!this.registrationOpen(rec)) throw new LaunchError("registration is closed");
@@ -120,6 +131,7 @@ export class LaunchService {
    * Building closes registration first, so nobody is told "registered" for an allowlist they can't be on.
    */
   async build(slug: string) {
+    if (this.get(slug).mode === "instant") throw new LaunchError("instant launches have no allowlist to build");
     const rec = this.update(slug, (cur) => {
       if (cur.onchain && this.now() >= cur.onchain.windowStart) throw new LaunchError("window has started; allowlist is frozen");
       if (cur.registrations.length === 0) throw new LaunchError("no registrations");
@@ -234,6 +246,10 @@ export class LaunchService {
 
   async evidence(slug: string, version?: number): Promise<string> {
     const rec = this.get(slug);
+    if (rec.mode === "instant") {
+      if (!rec.instant) throw new LaunchError("not deployed yet", 404);
+      return rec.instant.policyJson;
+    }
     return this.d.store.evidence(slug, version ?? (await this.liveVersion(rec)));
   }
 
@@ -295,11 +311,133 @@ export class LaunchService {
     });
   }
 
+  // ---------------------------------------------------------------- instant launches
+
+  /** The policy file an instant launch commits onchain (keccak256 = evidenceHash). */
+  instantPolicyFor(rec: LaunchRecord) {
+    if (!this.d.permitSigner) throw new LaunchError("PERMIT_SIGNER_KEY is not set on this server", 503);
+    return instantPolicy({
+      slug: rec.slug,
+      chainId: rec.chainId,
+      tiers: {
+        capWei: rec.tiers.capWei,
+        freshPoolCapWei: rec.tiers.freshPoolCapWei,
+        freshMaxNonce: rec.tiers.freshMaxNonce,
+        freshMaxAgeHours: rec.tiers.freshMaxAgeHours ?? 0,
+      },
+      permitSigner: this.d.permitSigner.address,
+      method: {
+        heuristic: `${CLUSTER_METHOD}; funding (native ETH, or a funding token sent by a wallet) traced within 2 hops when the wallet asks to buy`,
+        fundingWindowHours: this.d.fundingWindowHours === 0 ? "whole history" : this.d.fundingWindowHours,
+        fundingTokens: this.d.fundingTokens ?? [],
+        exclusions: this.d.exclusionsSource,
+      },
+    });
+  }
+
+  setInstantPolicy(slug: string, policyJson: string, evidenceHash: Hex) {
+    return this.update(slug, (rec) => {
+      rec.instant = { policyJson, evidenceHash };
+      return rec;
+    });
+  }
+
+  /**
+   * Instant launches: trace the wallet's funding now, assign its entity (or return the one it already has), and
+   * sign a KinPermit the hook accepts until `deadline`. A wallet keeps its first assignment: the entity's cap is
+   * pinned onchain by its first buy, so assignments never change once handed out.
+   */
+  async permit(slug: string, walletIn: string) {
+    if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
+    const wallet = getAddress(walletIn);
+    const rec = this.get(slug);
+    if (rec.mode !== "instant") throw new LaunchError("this launch uses an allowlist: register, then use your proof");
+    const o = rec.onchain;
+    if (!o) throw new LaunchError("launch is not deployed yet", 409);
+    const now = this.now();
+    if (now < o.windowStart - PERMIT_PREVIEW_SEC) throw new LaunchError("limits are handed out from 10 minutes before the window opens", 425);
+    if (now >= o.windowEnd) throw new LaunchError("the window has closed: trading is open to everyone", 410);
+    const signer = this.d.permitSigner;
+    if (!signer) throw new LaunchError("PERMIT_SIGNER_KEY is not set on this server", 503);
+
+    let assignment = (rec.permits ?? []).find((p) => p.wallet === wallet);
+    if (!assignment) {
+      const rpc = this.d.rpc();
+      const code = await rpc.call<Hex>("eth_getCode", [wallet, "latest"]);
+      if (code !== "0x" && !code.startsWith("0xef0100")) {
+        throw new LaunchError("smart-contract wallets can't buy in an instant window: use an EOA", 403);
+      }
+      const head = BigInt(await rpc.call<Hex>("eth_blockNumber", []));
+      const blockTime = await measureBlockTime(rpc, head);
+      const windowBlocks =
+        blockTime > 0 && this.d.fundingWindowHours > 0 ? BigInt(Math.ceil((this.d.fundingWindowHours * 3600) / blockTime)) : head;
+      const traced = await traceFunding(this.d.history(rpc), [{ wallet, beforeBlock: head }], {
+        windowBlocks,
+        excluded: this.d.excluded,
+        maxHops: 2,
+        fundingTokens: this.d.fundingTokens ?? [],
+        rpc,
+      });
+      const nonce = Number(BigInt(await rpc.call<Hex>("eth_getTransactionCount", [wallet, "latest"])));
+      const firstFundedAt = traced.firstFundedAt.get(wallet.toLowerCase());
+      // Assigned under the lock, against every assignment made so far (including ones made while tracing).
+      assignment = this.update(slug, (cur) => {
+        const list = cur.permits ?? [];
+        const again = list.find((p) => p.wallet === wallet);
+        if (again) return again;
+        const tiers = {
+          capWei: BigInt(cur.tiers.capWei),
+          freshPoolCapWei: BigInt(cur.tiers.freshPoolCapWei),
+          freshMaxNonce: cur.tiers.freshMaxNonce,
+          freshMaxAgeHours: cur.tiers.freshMaxAgeHours ?? 0,
+        };
+        const a = assignInstant(slug, list, { wallet, nonce, firstFundedAt, edges: traced.edges }, tiers, this.now(), this.d.excluded);
+        const rowNew: PermitAssignment = { wallet, ...a, at: this.now(), nonce, ...(firstFundedAt !== undefined ? { firstFundedAt } : {}) };
+        cur.permits = [...list, rowNew];
+        return rowNew;
+      });
+    }
+
+    const deadline = Math.min(o.windowEnd, Math.max(now, o.windowStart) + PERMIT_TTL_SEC);
+    const proof = await signPermit(signer, {
+      chainId: rec.chainId,
+      hook: o.key.hooks,
+      poolId: o.poolId,
+      buyer: wallet,
+      entityId: assignment.entityId,
+      entityCap: BigInt(assignment.cap),
+      deadline,
+    });
+    const members = (this.get(slug).permits ?? []).filter((p) => p.entityId === assignment!.entityId).length;
+    const all = this.get(slug).permits ?? [];
+    return { ...assignment, tier: effectiveTier(assignment, all), deadline, proof, entityMembers: members };
+  }
+
+  /** Every assignment handed out for an instant launch, in order. */
+  permits(slug: string): PermitAssignment[] {
+    const rec = this.get(slug);
+    if (rec.mode !== "instant") throw new LaunchError("this launch uses an allowlist", 404);
+    return rec.permits ?? [];
+  }
+
   /** What one wallet needs to see: registered? on the allowlist (live version)? its entry. */
   async walletStatus(slug: string, walletIn: string) {
     if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
     const w = getAddress(walletIn);
     const rec = this.get(slug);
+    if (rec.mode === "instant") {
+      const list = rec.permits ?? [];
+      const a = list.find((p) => p.wallet === w) ?? null;
+      return {
+        wallet: w,
+        registered: false,
+        registeredAt: null,
+        verified: false,
+        entry: a ? { wallet: w, entityId: a.entityId, tier: effectiveTier(a, list), cap: a.cap, proof: [] as Hex[] } : null,
+        entityMembers: a ? list.filter((p) => p.entityId === a.entityId).length : null,
+        disputes: [],
+      };
+    }
     const reg = rec.registrations.find((r) => r.wallet === w) ?? null;
     let entry: AllowlistEntry | null = null;
     let entityMembers: number | null = null;
@@ -319,6 +457,7 @@ export class LaunchService {
     const wallet = getAddress(walletIn);
     const text = reason.trim();
     if (text.length < 3 || text.length > 1000) throw new LaunchError("reason must be 3-1000 characters");
+    if (rec.mode === "instant") throw new LaunchError("instant launches have no allowlist to dispute; every assignment is public");
     if (rec.onchain && this.now() >= rec.onchain.windowStart) throw new LaunchError("disputes close when the window starts");
     const ok = await this.d.verify(wallet, disputeMessage(slug, wallet, rec.chainId, text), signature);
     if (!ok) throw new LaunchError("signature does not match wallet", 401);
@@ -362,8 +501,10 @@ export class LaunchService {
 
   /** Public view: no signatures. */
   publicView(rec: LaunchRecord) {
+    const permits = rec.permits ?? [];
     return {
       slug: rec.slug,
+      mode: rec.mode ?? "allowlist",
       chainId: rec.chainId,
       name: rec.name,
       symbol: rec.symbol,
@@ -378,6 +519,22 @@ export class LaunchService {
       disputes: rec.disputes.map(({ signature: _s, ...x }) => x),
       allowlist: rec.allowlist,
       onchain: rec.onchain,
+      instant:
+        rec.mode === "instant"
+          ? {
+              evidenceHash: rec.instant?.evidenceHash ?? null,
+              wallets: permits.length,
+              entities: new Set(permits.map((p) => p.entityId)).size,
+              linkedWallets: permits.filter((p) => effectiveTier(p, permits) === "linked").length,
+              freshWallets: permits.filter((p) => p.tier === "fresh").length,
+            }
+          : null,
     };
   }
+}
+
+/** An entity's first wallet is "aged" until another wallet joins it; then all its wallets are "linked". */
+function effectiveTier(a: PermitAssignment, all: PermitAssignment[]): PermitAssignment["tier"] {
+  if (a.tier === "fresh") return "fresh";
+  return all.filter((p) => p.entityId === a.entityId).length > 1 ? "linked" : a.tier;
 }

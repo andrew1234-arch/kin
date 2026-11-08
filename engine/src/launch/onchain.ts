@@ -5,7 +5,9 @@ import {
   createWalletClient,
   getAddress,
   http,
+  keccak256,
   parseEventLogs,
+  toBytes,
   toHex,
   type Address,
   type Hex,
@@ -31,11 +33,30 @@ export function adminClients(opts: { rpcUrl: string; chainId: number; adminKey: 
 }
 type Clients = ReturnType<typeof adminClients>;
 
-/** factory.createLaunch with the built root; the window opens after the dispute period. */
+/**
+ * factory.createLaunch. Allowlist launches commit the built root; the window opens after the dispute period.
+ * Instant launches commit root 0 and the hash of their policy file; the window opens after `delayAfterBuildSec`
+ * (at least the hook's minimum review period), and buyers get permits from the engine.
+ */
 export async function deployLaunch(svc: LaunchService, slug: string, c: Clients) {
   const rec = svc.get(slug);
-  if (!rec.allowlist) throw new Error("build the allowlist first");
+  const instant = rec.mode === "instant";
+  if (!instant && !rec.allowlist) throw new Error("build the allowlist first");
   if (rec.onchain) throw new Error("already deployed");
+  let commit = rec.allowlist
+    ? { root: rec.allowlist.root, evidenceHash: rec.allowlist.evidenceHash, stats: rec.allowlist.stats, version: rec.allowlist.version }
+    : null;
+  if (instant) {
+    const signer = await c.pub.readContract({ address: c.hook, abi: kinHookAbi, functionName: "permitSigner" });
+    const policy = svc.instantPolicyFor(rec);
+    const want = (JSON.parse(policy.json) as { permitSigner: string }).permitSigner;
+    if (signer.toLowerCase() !== want.toLowerCase()) {
+      throw new Error(`this hook trusts permit signer ${signer}, but PERMIT_SIGNER_KEY is ${want}`);
+    }
+    svc.setInstantPolicy(slug, policy.json, policy.hash);
+    const zero = `0x${"00".repeat(32)}` as Hex;
+    commit = { root: zero, evidenceHash: policy.hash, stats: { allowlistedWallets: 0, entities: 0, linkedWallets: 0, freshWallets: 0 }, version: 0 };
+  }
   const head = await c.pub.getBlock();
   const windowStart = head.timestamp + BigInt(rec.window.delayAfterBuildSec);
   const hash = await c.wallet.writeContract({
@@ -47,13 +68,14 @@ export async function deployLaunch(svc: LaunchService, slug: string, c: Clients)
         name: rec.name,
         symbol: rec.symbol,
         ...launchParams(),
-        root: rec.allowlist.root,
-        evidenceHash: rec.allowlist.evidenceHash,
-        stats: rec.allowlist.stats,
+        root: commit!.root,
+        evidenceHash: commit!.evidenceHash,
+        stats: commit!.stats,
         windowStart,
         windowEnd: windowStart + BigInt(rec.window.lengthSec),
         lockDuration: BigInt(rec.window.lockSec),
-        salt: toHex(`kin:${slug}:${Date.now()}`, { size: 32 }),
+        // Hashed, not padded: a padded string overflows bytes32 for slugs longer than 14 characters.
+        salt: keccak256(toBytes(`kin:${slug}:${Date.now()}`)),
       },
       false,
     ],
@@ -72,9 +94,9 @@ export async function deployLaunch(svc: LaunchService, slug: string, c: Clients)
     windowStart: Number(windowStart),
     windowEnd: Number(windowStart) + rec.window.lengthSec,
     lockDuration: rec.window.lockSec,
-    rootVersion: rec.allowlist.version,
+    rootVersion: commit!.version,
   }).onchain!;
-  await publishMirror(svc, slug);
+  if (!instant) await publishMirror(svc, slug);
   return onchain;
 }
 

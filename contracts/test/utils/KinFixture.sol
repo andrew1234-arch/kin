@@ -64,6 +64,8 @@ abstract contract KinFixture is Deployers {
     address bob = makeAddr("bob");
     address stranger = makeAddr("stranger");
     address funder = makeAddr("bundle-funder");
+    uint256 permitSignerKey = 0xA11CE;
+    address permitSigner = vm.addr(0xA11CE);
     address[] bundle;
     address[] fresh;
 
@@ -83,11 +85,11 @@ abstract contract KinFixture is Deployers {
         deployFreshManagerAndRouters();
 
         router = new KinRouter(manager, address(this));
-        bytes memory args = abi.encode(address(manager), address(router), address(this), _limits());
+        bytes memory args = abi.encode(address(manager), address(router), address(this), _limits(), permitSigner);
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this), uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG), type(KinHook).creationCode, args
         );
-        hook = new KinHook{salt: salt}(manager, address(router), address(this), _limits());
+        hook = new KinHook{salt: salt}(manager, address(router), address(this), _limits(), permitSigner);
         require(address(hook) == predicted, "hook address mismatch");
 
         vault = new KinVault(hook, address(router));

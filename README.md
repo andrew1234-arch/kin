@@ -6,15 +6,25 @@
 
 Clanker taxes everyone who's early. Kin only limits the ones who are secretly the same person.
 
-Wallets register for a launch. Registered wallets are grouped into entities by weighted onchain evidence (shared funders, funding sources, same-block buys), and the
-evidence is published as a file whose hash is committed onchain before the window opens. Linked wallets share
-one cap, fresh wallets share one pooled cap, aged unlinked wallets get their own. During the window a Uniswap v4
-hook only accepts buys through the Kin router, within each entity's cap, and the tokens sit in a vault until the
-lock ends. Then trading opens to everyone. This makes bundling expensive and visible; it does not stop it.
+Wallets are grouped into entities by onchain funding evidence (shared funders within two hops, funding
+sources, same-block buys). Linked wallets share one cap, fresh wallets share one pooled cap, aged unlinked
+wallets get their own. A launch runs in one of two modes:
+
+- **Instant** (default): no registration. When a wallet asks to buy, the engine traces its funding on the spot,
+  assigns it an entity and signs a 10-minute EIP-712 permit for that entity and cap. KinHook checks the
+  signature against its permit signer in the swap. The rules' hash is committed onchain at deploy and every
+  assignment is public at `/launches/<slug>/permits`.
+- **Allowlist**: wallets register first; the entities go into a Merkle root and an evidence file whose hash is
+  committed onchain before the window, and wallets can dispute a link until the window opens.
+
+In both modes, during the window a Uniswap v4 hook only accepts buys through the Kin router, within each
+entity's cap, and the tokens sit in a vault until the lock ends. Then trading opens to everyone. This makes bundling expensive and visible; it does not stop it.
 
 What Kin does not protect, by design today: buys after the window (open trading, no caps), the order of buys
 inside the window (earlier buys get a better price), and the launcher's honesty about the root and evidence
-(anyone can recompute them from the published evidence, but nothing onchain checks them). See BUILD_LOG.md.
+(anyone can recompute them from the published evidence, but nothing onchain checks them). In instant mode the
+hook trusts the engine's permit signer instead: every assignment it signs is public and each buy's entity is in
+the `WindowBuy` event, but there is no dispute before the buy. See BUILD_LOG.md.
 
 ## Layout
 
@@ -31,12 +41,13 @@ SCORECARD.md the Vibeathon 02 rubric, scored with evidence and open gaps
 
 | Piece | State |
 |---|---|
-| Contracts | 41 tests pass (`cd contracts && forge test`) |
-| Engine | 52 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Contracts | 53 tests pass (`cd contracts && forge test`), 12 of them for instant-launch permits |
+| Engine | 57 tests pass (`cd engine && bun test`), including launch-backend and instant-launch integration tests on a local chain |
 | Cluster engine | Weighted evidence ported from [Nuno](https://github.com/andrew1234-arch/nuno) (same funder 1.0, shared source 0.8, same-block early buy 0.5, merge at 1.0, hub cap with farm exception) |
 | Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
-| Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |
+| Kin Launch, allowlist mode (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |
+| Kin Launch, instant mode (connect → funding traced at buy time → signed permit → window buy → vault → claim → receipt) | Built; contracts and engine tested, seeded on a local chain (`demo-instant`). Not yet on Base Sepolia |
 | Fairness Receipt page + embed | Built |
 | Replay job + page | Built; sample selection is by rule from Clanker v4 events; **not yet computed** (needs Base mainnet access) |
 | Base Verify tier (verified-human cap) | Built and tested against a local mock of Base's API; needs a Base Verify secret key (Base's interest form) to go live |
@@ -66,8 +77,10 @@ NEXT_PUBLIC_DEPLOYMENT_JSON="$(cat ../contracts/deployments/31337.json)" npm run
 2. Run the engine (`engine/Dockerfile`) on a worker host with the variables in `engine/.env.example`
    (Base mainnet RPC + history provider for Scan; Base Sepolia RPC for launches and the sandbox relayer key).
 3. Deploy `web/` to Vercel with the variables in `web/.env.example`.
-4. Create a launch: `bun run src/launch/admin.ts create <slug> <name> <symbol> …`, then `build` and `deploy`
-   when registration closes, `resolve` / `build` / `update-root` for disputes, and `finalize` after the window.
+4. Create a launch. Instant (no registration; set `PERMIT_SIGNER_KEY` to the hook's permit signer, the deployer by
+   default): `bun run src/launch/admin.ts create-instant <slug> <name> <symbol> …` creates and deploys in one step;
+   keep the engine online through the window. Allowlist: `create <slug> <name> <symbol> …`, then `build` and `deploy`
+   when registration closes, `resolve` / `build` / `update-root` for disputes. `finalize` after the window either way.
 5. Real-network runs, one command each (results land in `reports/`):
    - `engine/scripts/real-mainnet.sh [N=50] [DAYS=7] [SETTLE_HOURS=24]`: probes the history provider, selects the
      replay sample by rule from Clanker v4 `TokenCreated` events (WETH-paired, evenly spaced over a settled 7-day

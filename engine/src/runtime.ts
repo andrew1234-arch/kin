@@ -1,4 +1,5 @@
-import { createPublicClient, getAddress, http, recoverMessageAddress, type PublicClient } from "viem";
+import { createPublicClient, getAddress, http, recoverMessageAddress, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { fundingTokens, scanOptionsFromEnv } from "./config";
 import { historyFromEnv } from "./data/history";
 import { Rpc } from "./data/rpc";
@@ -16,6 +17,8 @@ import { dataDir } from "./paths";
  *   LAUNCH_CHAIN_ID      its chain id (checked against the RPC at startup by the server)
  *   LAUNCH_HISTORY_PROVIDER  transfer-history provider for that chain (alchemy | blockscout | rpc-scan)
  *   LAUNCH_FUNDING_TOKENS    ERC-20s on that chain whose transfers count as funding (comma-separated; default none)
+ *   PERMIT_SIGNER_KEY    private key that signs buy permits for instant launches; its address must be the
+ *                        hook's permitSigner (DeployKin sets KIN_PERMIT_SIGNER, default the deployer)
  *   LAUNCH_ALLOW_SMART_WALLETS=1  accept ERC-1271 / ERC-6492 signatures. Off by default: control of a smart
  *                            account can change hands, which would let an allowlist slot (and its vault claim) be
  *                            sold or rented; an EOA's key can't be handed over and taken back.
@@ -62,6 +65,7 @@ export function launchRuntime() {
     fundingWindowHours: scanOpts.fundingWindowHours,
     fundingTokens: fundingTokens("LAUNCH_FUNDING_TOKENS", []),
     baseVerify: baseVerifyCfg ? new BaseVerifyClient(baseVerifyCfg) : null,
+    permitSigner: envStr("PERMIT_SIGNER_KEY") ? privateKeyToAccount(envStr("PERMIT_SIGNER_KEY") as Hex) : null,
   });
   return { service, store, pub, chainId, rpcUrl };
 }

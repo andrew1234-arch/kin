@@ -6,6 +6,9 @@
  *               built, the launch deployed, window buys made (the bundle hits its shared cap; each fresh wallet
  *               buys its third of the fresh pool), then finalized.
  *   demo-open : registration open, for registering from a browser wallet.
+ *   demo-instant : no registration. 3 aged wallets from one funder, 1 unrelated aged wallet and 1 fresh wallet ask
+ *               for permits when they buy; the engine traces funding at that moment and signs. The bundle shares one
+ *               cap (its third buy reverts). The window stays open 4 hours so a browser wallet can buy too.
  *
  * Env: API_URL, RPC_URL, ADMIN_KEY, DEPLOYMENT, DATA_DIR (same as the server's).
  */
@@ -134,3 +137,64 @@ rt.service.create({
 });
 for (const a of aged) await register(open, a);
 console.log(`[${open}] registration open`);
+
+// ---------------------------------------------------------------- demo-instant
+const inst = "demo-instant";
+rt.service.create({
+  slug: inst,
+  chainId: 31337,
+  name: "Kin Instant Demo",
+  symbol: "KINST",
+  mode: "instant",
+  registrationClosesAt: await now(),
+  tiers: {
+    capWei: parseEther("0.01").toString(),
+    freshPoolCapWei: parseEther("0.01").toString(),
+    verifiedCapWei: parseEther("0.01").toString(),
+    freshMaxNonce: 0,
+    // Fresh by nonce only: every wallet on this chain was funded minutes ago, so an age rule would put the aged
+    // bundle below in the fresh pool (where it would also be capped, but as "fresh", not "linked").
+    freshMaxAgeHours: 0,
+  },
+  window: { delayAfterBuildSec: 15, lengthSec: 4 * 3600, lockSec: 60 },
+});
+const instOnchain = await deployLaunch(rt.service, inst, c);
+console.log(`[${inst}] deployed with no allowlist: pool ${instOnchain.poolId}, window opens at ${instOnchain.windowStart}`);
+
+const instFunder = privateKeyToAccount(generatePrivateKey());
+await setBalance(instFunder.address, "5");
+const instBundle = Array.from({ length: 3 }, () => privateKeyToAccount(generatePrivateKey()));
+for (const b of instBundle) {
+  await pub.waitForTransactionReceipt({ hash: await wc(instFunder).sendTransaction({ to: b.address, value: parseEther("0.05") }) });
+  await pub.waitForTransactionReceipt({ hash: await wc(b).sendTransaction({ to: b.address, value: 1n }) }); // aged, not fresh
+}
+const instAged = privateKeyToAccount(generatePrivateKey());
+await setBalance(instAged.address, "1");
+await pub.waitForTransactionReceipt({ hash: await wc(instAged).sendTransaction({ to: instAged.address, value: 1n }) });
+const instFresh = privateKeyToAccount(generatePrivateKey());
+await setBalance(instFresh.address, "1");
+
+while ((await now()) < instOnchain.windowStart) await Bun.sleep(1000);
+const instKey = instOnchain.key;
+async function instantBuy(a: PrivateKeyAccount, eth: string) {
+  const permit = await post(`/launches/${inst}/permit`, { wallet: a.address });
+  try {
+    const hash = await wc(a).writeContract({
+      address: dep.kinRouter,
+      abi: kinRouterAbi,
+      functionName: "swapExactIn",
+      args: [instKey, true, parseEther(eth), 0n, { entityId: permit.entityId, entityCap: BigInt(permit.cap), proof: permit.proof }, BigInt(instOnchain.windowEnd)],
+      value: parseEther(eth),
+      gas: 600_000n,
+    });
+    return `${permit.tier} ${(await pub.waitForTransactionReceipt({ hash })).status}`;
+  } catch (e) {
+    return `${permit.tier} error: ${(e as Error).message.split("\n")[0]}`;
+  }
+}
+const instOut: string[] = [];
+for (const b of instBundle) instOut.push(`bundle ${await instantBuy(b, "0.004")}`); // 3 x 0.004 > one 0.01 cap
+instOut.push(`aged ${await instantBuy(instAged, "0.005")}`);
+instOut.push(`fresh ${await instantBuy(instFresh, "0.003")}`);
+console.log(`[${inst}] permit buys:`, instOut.join(", "));
+

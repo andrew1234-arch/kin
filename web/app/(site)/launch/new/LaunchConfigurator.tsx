@@ -7,7 +7,10 @@ import { DEPLOYMENT, LAUNCH_CHAIN_ID } from "@/lib/config";
 import { chainLabel, useEngine } from "@/lib/engine";
 import { REPO_URL } from "@/lib/site";
 
+type Mode = "instant" | "allowlist";
+
 interface Form {
+  mode: Mode;
   slug: string;
   name: string;
   symbol: string;
@@ -16,22 +19,26 @@ interface Form {
   verified: string;
   regHours: string;
   disputeMin: string;
+  startsMin: string;
   windowMin: string;
   lockMin: string;
   minBalance: string;
   freshAgeHours: string;
 }
 
-// The admin CLI's own defaults (engine/src/launch/admin.ts), so an untouched form matches a bare `create`.
+// The admin CLI's own defaults (engine/src/launch/admin.ts), so an untouched form matches a bare `create-instant`
+// (fresh pool = the entity cap) or, in allowlist mode, a bare `create` (fresh pool 0.02).
 const DEFAULTS: Form = {
+  mode: "instant",
   slug: "",
   name: "",
   symbol: "",
   cap: "0.01",
-  fresh: "0.02",
+  fresh: "0.01",
   verified: "0.01",
   regHours: "24",
   disputeMin: "30",
+  startsMin: "30",
   windowMin: "30",
   lockMin: "60",
   minBalance: "0.0005",
@@ -53,14 +60,23 @@ function validate(f: Form): Partial<Record<keyof Form, string>> {
   else if (f.slug === "new") e.slug = "“new” is reserved by this site.";
   if (!f.name.trim()) e.name = "Required.";
   if (!/^[A-Z0-9]{1,11}$/.test(f.symbol)) e.symbol = "1 to 11 capital letters or digits.";
-  for (const k of ["cap", "fresh", "verified", "regHours", "disputeMin", "windowMin", "lockMin", "freshAgeHours"] as const) {
+  const instant = f.mode === "instant";
+  const nums = instant
+    ? (["cap", "fresh", "startsMin", "windowMin", "lockMin", "freshAgeHours"] as const)
+    : (["cap", "fresh", "verified", "regHours", "disputeMin", "windowMin", "lockMin", "freshAgeHours"] as const);
+  for (const k of nums) {
     if (!NUM.test(f[k]) || Number(f[k]) <= 0) e[k] = "A positive number.";
   }
-  if (!NUM.test(f.minBalance)) e.minBalance = "A number, 0 for none.";
-  if (!e.verified && !e.cap && Number(f.verified) < Number(f.cap)) e.verified = "Should be at least the entity cap.";
   const min = (s: number) => (s >= 60 ? `${s / 60} min` : `${s} s`);
-  if (!e.disputeMin && Number(f.disputeMin) * 60 < LIMITS.minReviewPeriod)
-    e.disputeMin = `At least ${min(LIMITS.minReviewPeriod)}: the hook's review period.`;
+  if (instant) {
+    if (!e.startsMin && Number(f.startsMin) * 60 < LIMITS.minReviewPeriod)
+      e.startsMin = `At least ${min(LIMITS.minReviewPeriod)}: the hook's review period.`;
+  } else {
+    if (!NUM.test(f.minBalance)) e.minBalance = "A number, 0 for none.";
+    if (!e.verified && !e.cap && Number(f.verified) < Number(f.cap)) e.verified = "Should be at least the entity cap.";
+    if (!e.disputeMin && Number(f.disputeMin) * 60 < LIMITS.minReviewPeriod)
+      e.disputeMin = `At least ${min(LIMITS.minReviewPeriod)}: the hook's review period.`;
+  }
   if (!e.windowMin && Number(f.windowMin) * 60 < LIMITS.minWindow) e.windowMin = `At least ${min(LIMITS.minWindow)}.`;
   if (!e.windowMin && Number(f.windowMin) * 60 > LIMITS.maxWindow) e.windowMin = `At most ${LIMITS.maxWindow / 3600} h.`;
   if (!e.lockMin && Number(f.lockMin) * 60 > LIMITS.maxLock) e.lockMin = `At most ${LIMITS.maxLock / 86_400} days.`;
@@ -150,6 +166,10 @@ export function LaunchConfigurator() {
   const tokenIncomplete = !!(errors.name || errors.symbol || errors.slug);
 
   const slug = f.slug || "<slug>";
+  const instant = f.mode === "instant";
+  const createInstant = ok
+    ? `bun run admin create-instant ${f.slug} ${q(f.name.trim())} ${f.symbol} ${f.cap} ${f.fresh} ${f.startsMin} ${f.windowMin} ${f.lockMin} ${f.freshAgeHours}`
+    : undefined;
   const create = ok
     ? `bun run admin create ${f.slug} ${q(f.name.trim())} ${f.symbol} ${f.cap} ${f.fresh} ${f.regHours} ${f.windowMin} ${f.lockMin} ${f.disputeMin} ${f.verified} ${f.minBalance} ${f.freshAgeHours}`
     : undefined;
@@ -165,8 +185,8 @@ export function LaunchConfigurator() {
         </p>
         <h1>Set up a fair launch.</h1>
         <p className="lede">
-          Choose how much one entity can buy, how long people have to register and dispute, and how long window buys
-          stay locked. Kin generates the exact commands that create and deploy the launch.
+          Choose how much one entity can buy, when the capped window opens and how long window buys stay locked. Kin
+          generates the exact commands that create and deploy the launch.
         </p>
       </header>
 
@@ -196,6 +216,24 @@ export function LaunchConfigurator() {
       <div className="newlaunch-grid">
         <form className="card newlaunch-form" onSubmit={(e) => e.preventDefault()} noValidate>
           <fieldset>
+            <legend>How buyers get their limit</legend>
+            <div className="mode-pick" role="radiogroup" aria-label="Launch mode">
+              {(
+                [
+                  ["instant", "Instant", "No registration. Kin checks a wallet's funding when it buys and signs its limit."],
+                  ["allowlist", "Allowlist", "Wallets register first. Kin publishes the allowlist and takes disputes before the window."],
+                ] as const
+              ).map(([m, title, text]) => (
+                <button key={m} type="button" role="radio" aria-checked={f.mode === m} className="mode-opt" onClick={() =>
+                    setF((p) => ({ ...p, mode: m, fresh: touched.has("fresh") ? p.fresh : m === "instant" ? p.cap : "0.02" }))
+                  }>
+                  <strong>{title}</strong>
+                  <span>{text}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
             <legend>Token</legend>
             <Field id="name" label="Name" value={f.name} onChange={set("name")} error={show("name")} placeholder="Night Shift" />
             <div className="field-pair">
@@ -214,22 +252,26 @@ export function LaunchConfigurator() {
           <fieldset>
             <legend>Limits</legend>
             <Field id="cap" label="Cap per entity" suffix="ETH" inputMode="decimal" value={f.cap} onChange={set("cap")} error={show("cap")} hint="Shared by every wallet in one entity." />
-            <Field id="fresh" label="Fresh-wallet pool" suffix="ETH" inputMode="decimal" value={f.fresh} onChange={set("fresh")} error={show("fresh")} hint="Split evenly between all new wallets." />
-            <Field id="verified" label="Verified-human cap" suffix="ETH" inputMode="decimal" value={f.verified} onChange={set("verified")} error={show("verified")} hint="For single verified wallets, when the engine has Base Verify." />
+            <Field id="fresh" label="Fresh-wallet pool" suffix="ETH" inputMode="decimal" value={f.fresh} onChange={set("fresh")} error={show("fresh")} hint={instant ? "One limit shared by every new wallet." : "Split evenly between all new wallets."} />
+            {!instant && <Field id="verified" label="Verified-human cap" suffix="ETH" inputMode="decimal" value={f.verified} onChange={set("verified")} error={show("verified")} hint="For single verified wallets, when the engine has Base Verify." />}
           </fieldset>
           <fieldset>
-            <legend>Who can register</legend>
+            <legend>{instant ? "Fresh wallets" : "Who can register"}</legend>
             <div className="field-pair">
-              <Field id="minBalance" label="Minimum balance" suffix="ETH" inputMode="decimal" value={f.minBalance} onChange={set("minBalance")} error={show("minBalance")} hint="Makes mass sign-ups cost money. Not spent." />
+              {!instant && <Field id="minBalance" label="Minimum balance" suffix="ETH" inputMode="decimal" value={f.minBalance} onChange={set("minBalance")} error={show("minBalance")} hint="Makes mass sign-ups cost money. Not spent." />}
               <Field id="freshAgeHours" label="Fresh if newer than" suffix="hours" inputMode="decimal" value={f.freshAgeHours} onChange={set("freshAgeHours")} error={show("freshAgeHours")} hint="Wallets first funded this recently join the fresh pool." />
             </div>
           </fieldset>
           <fieldset>
             <legend>Timing</legend>
-            <div className="field-pair">
-              <Field id="regHours" label="Registration" suffix="hours" inputMode="decimal" value={f.regHours} onChange={set("regHours")} error={show("regHours")} />
-              <Field id="disputeMin" label="Dispute period" suffix="min" inputMode="decimal" value={f.disputeMin} onChange={set("disputeMin")} error={show("disputeMin")} />
-            </div>
+            {instant ? (
+              <Field id="startsMin" label="Window opens in" suffix="min" inputMode="decimal" value={f.startsMin} onChange={set("startsMin")} error={show("startsMin")} hint="From deploy. Limits are handed out from 10 minutes before." />
+            ) : (
+              <div className="field-pair">
+                <Field id="regHours" label="Registration" suffix="hours" inputMode="decimal" value={f.regHours} onChange={set("regHours")} error={show("regHours")} />
+                <Field id="disputeMin" label="Dispute period" suffix="min" inputMode="decimal" value={f.disputeMin} onChange={set("disputeMin")} error={show("disputeMin")} />
+              </div>
+            )}
             <div className="field-pair">
               <Field id="windowMin" label="Capped window" suffix="min" inputMode="decimal" value={f.windowMin} onChange={set("windowMin")} error={show("windowMin")} />
               <Field id="lockMin" label="Vault lock" suffix="min" inputMode="decimal" value={f.lockMin} onChange={set("lockMin")} error={show("lockMin")} />
@@ -241,18 +283,30 @@ export function LaunchConfigurator() {
           <div className="card summary">
             <p className="eyebrow">What participants get</p>
             <ul>
-              <li>
-                <strong>{f.regHours || "?"} h</strong> to register a wallet by signing a message. Free.
-              </li>
+              {instant ? (
+                <li>
+                  <strong>No registration.</strong> Connect and buy; Kin traces the wallet&apos;s funding at that moment.
+                </li>
+              ) : (
+                <li>
+                  <strong>{f.regHours || "?"} h</strong> to register a wallet by signing a message. Free.
+                </li>
+              )}
               <li>
                 Up to <strong>{f.cap || "?"} ETH</strong> per entity, however many wallets it uses.
               </li>
               <li>
-                <strong>{f.fresh || "?"} ETH</strong> split evenly between brand-new wallets.
+                <strong>{f.fresh || "?"} ETH</strong> {instant ? "shared by all brand-new wallets." : "split evenly between brand-new wallets."}
               </li>
-              <li>
-                <strong>{f.disputeMin || "?"} min</strong> to read the evidence and dispute before buying opens.
-              </li>
+              {instant ? (
+                <li>
+                  The window opens <strong>{f.startsMin || "?"} min</strong> after deploy. Every limit handed out is public.
+                </li>
+              ) : (
+                <li>
+                  <strong>{f.disputeMin || "?"} min</strong> to read the evidence and dispute before buying opens.
+                </li>
+              )}
               <li>
                 A <strong>{f.windowMin || "?"} min</strong> capped window, then <strong>{f.lockMin || "?"} min</strong> in the vault before tokens can be claimed.
               </li>
@@ -272,6 +326,26 @@ export function LaunchConfigurator() {
           </a>
           .
         </p>
+        {instant ? (
+          <ol className="cmds">
+            <Cmd step="01" title="Create and deploy the launch" cmd={createInstant}>
+              {createInstant
+                ? "Creates the launch and deploys the pool in one step, with the rules' hash committed onchain. Also needs PERMIT_SIGNER_KEY: the key the hook accepts permits from."
+                : tokenIncomplete
+                  ? "Fill in the token details above to generate this command."
+                  : "Fix the highlighted fields above to generate this command."}
+            </Cmd>
+            <Cmd step="02" title="Share the launch page">
+              Buyers connect a wallet at <code className="mono">/launch/{slug}</code>. From 10 minutes before the window, each wallet
+              gets its limit when it asks: the engine traces its funding, puts it in an entity and signs a 10-minute permit. Keep
+              the engine online through the window.
+            </Cmd>
+            <Cmd step="03" title="After the window" cmd={`bun run admin finalize ${slug}`}>
+              Optional. The Fairness Receipt is final at the end of the window and lives at <code className="mono">/receipt/{slug}</code>;
+              every limit handed out stays public at <code className="mono">/launches/{slug}/permits</code>.
+            </Cmd>
+          </ol>
+        ) : (
         <ol className="cmds">
           <Cmd step="01" title="Create the launch" cmd={create}>
             {create
@@ -300,6 +374,7 @@ export function LaunchConfigurator() {
             <code className="mono">/receipt/{slug}</code>; finalize only emits the receipt event.
           </Cmd>
         </ol>
+        )}
         <div className="ctas">
           <Link className="btn" href="/launch">
             See existing launches

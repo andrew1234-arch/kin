@@ -2,6 +2,8 @@
  * Launch admin CLI.
  *
  *   bun run src/launch/admin.ts create <slug> <name> <symbol> [capEth=0.01] [freshPoolCapEth=0.02] [registrationHours=24] [windowMin=30] [lockMin=60] [disputeMin=30] [verifiedCapEth=capEth] [minBalanceEth=0.0005] [freshMaxAgeHours=168]
+ *   bun run src/launch/admin.ts create-instant <slug> <name> <symbol> [capEth=0.01] [freshPoolCapEth=capEth] [startsInMin=30] [windowMin=30] [lockMin=60] [freshMaxAgeHours=168]
+ *                                                     # no registration: creates and deploys now; buyers get permits at buy time
  *   bun run src/launch/admin.ts build <slug>
  *   bun run src/launch/admin.ts deploy <slug>          # factory.createLaunch with the built root; window opens after the dispute period
  *   bun run src/launch/admin.ts resolve <slug> <disputeId> accept|reject [unlink] [note...]
@@ -12,7 +14,8 @@
  * Building the allowlist closes registration. The hook enforces its deploy-time limits (minimum review period,
  * window and lock bounds, creator share); `deploy` reverts if the launch's window settings break them.
  *
- * Env: LAUNCH_RPC_URL, LAUNCH_CHAIN_ID, LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT (contracts/deployments/<chainId>.json), DATA_DIR.
+ * Env: LAUNCH_RPC_URL, LAUNCH_CHAIN_ID, LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT (contracts/deployments/<chainId>.json), DATA_DIR,
+ * PERMIT_SIGNER_KEY (instant launches).
  */
 import { parseEther, type Hex } from "viem";
 import { launchRuntime } from "../runtime";
@@ -21,7 +24,7 @@ import { envStr } from "../env";
 
 const [cmd, slug, ...rest] = process.argv.slice(2);
 if (!cmd || !slug) {
-  console.error("usage: admin.ts <create|build|deploy|resolve|update-root|finalize|publish> <slug> ...");
+  console.error("usage: admin.ts <create|create-instant|build|deploy|resolve|update-root|finalize|publish> <slug> ...");
   process.exit(1);
 }
 const rt = launchRuntime();
@@ -57,6 +60,28 @@ switch (cmd) {
       minBalanceWei: parseEther(minBalance).toString(),
     });
     console.log(JSON.stringify(rt.service.publicView(rec), null, 2));
+    break;
+  }
+  case "create-instant": {
+    const [name, symbol, cap = "0.01", fresh = cap, startsIn = "30", windowMin = "30", lockMin = "60", maxAgeHours = "168"] = rest;
+    if (!name || !symbol) throw new Error("name and symbol are required");
+    rt.service.create({
+      slug,
+      chainId: rt.chainId,
+      name,
+      symbol,
+      mode: "instant",
+      registrationClosesAt: now(),
+      tiers: {
+        capWei: parseEther(cap).toString(),
+        freshPoolCapWei: parseEther(fresh).toString(),
+        verifiedCapWei: parseEther(cap).toString(),
+        freshMaxNonce: 0,
+        freshMaxAgeHours: Number(maxAgeHours),
+      },
+      window: { delayAfterBuildSec: Math.round(Number(startsIn) * 60), lengthSec: Number(windowMin) * 60, lockSec: Number(lockMin) * 60 },
+    });
+    console.log(JSON.stringify(await deployLaunch(rt.service, slug, onchainClients()), null, 2));
     break;
   }
   case "build": {

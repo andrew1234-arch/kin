@@ -14,6 +14,7 @@ import {
 import { join } from "node:path";
 import type { Address, Hex } from "viem";
 import type { AllowlistEntry, AllowlistStats } from "../allowlist/build";
+import type { PermitAssignment } from "./instant";
 
 /**
  * One launch's offchain state, under DATA_DIR/launches/<slug>/: launch.json (everything but registrations) and
@@ -23,6 +24,15 @@ import type { AllowlistEntry, AllowlistStats } from "../allowlist/build";
  */
 export interface LaunchRecord {
   slug: string;
+  /**
+   * "allowlist" (default): registration, then a Merkle allowlist committed before the window.
+   * "instant": no registration; each buyer's funding is traced when they buy and the engine signs a permit.
+   */
+  mode?: "allowlist" | "instant";
+  /** Instant launches: every entity assignment, in issue order (append-only, public). */
+  permits?: PermitAssignment[];
+  /** Instant launches: the published policy file; its keccak256 is the evidenceHash committed onchain. */
+  instant?: { policyJson: string; evidenceHash: Hex };
   chainId: number;
   name: string;
   symbol: string;

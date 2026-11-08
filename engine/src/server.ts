@@ -8,6 +8,8 @@
  *   GET  /launches/:slug/messages/register?wallet=    exact text to sign
  *   GET  /launches/:slug/messages/dispute?wallet=&reason=
  *   POST /launches/:slug/register   {wallet, signature}
+ *   POST /launches/:slug/permit     {wallet}          instant launches: trace funding now, return entity + signed permit
+ *   GET  /launches/:slug/permits                      instant launches: every assignment handed out, with its funding links
  *   GET  /launches/:slug/allowlist                    entries + proofs (the version that is onchain)
  *   GET  /launches/:slug/proof/:wallet
  *   GET  /launches/:slug/wallets/:wallet               registered? tier, cap, proof, disputes
@@ -247,6 +249,12 @@ const server = Bun.serve({
           const body = (await req.json()) as { wallet: string; signature: Hex };
           return json(await svc.register(slug, body.wallet, body.signature));
         }
+        if (parts[2] === "permit" && req.method === "POST") {
+          if (rateLimited(`permit:${ip}`, 20, 60_000)) return fail(429, "slow down");
+          const body = (await req.json()) as { wallet: string };
+          return json(await svc.permit(slug, body.wallet));
+        }
+        if (parts[2] === "permits" && req.method === "GET") return json(svc.permits(slug));
         if (parts[2] === "allowlist" && req.method === "GET") return json(await svc.entries(slug));
         if (parts[2] === "wallets" && parts[3] && req.method === "GET") return json(await svc.walletStatus(slug, parts[3]));
         if (parts[2] === "proof" && parts[3] && req.method === "GET") return json(await svc.proof(slug, parts[3]));

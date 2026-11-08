@@ -7,13 +7,13 @@ const d = (s: number) => ({ "--d": `${s}s` }) as React.CSSProperties;
 
 const STEPS = [
   {
-    title: "Register",
-    body: "Connect a wallet and sign a message before registration closes. It costs nothing.",
+    title: "Connect",
+    body: "Open the launch and connect a wallet. No sign-up, no allowlist to join, nothing to sign.",
     icon: "M5 12.5 9.5 17 19 7.5",
   },
   {
     title: "Get your limit",
-    body: "Kin traces where each wallet got its funds. Wallets paid by the same source share one limit. You can dispute a link before trading starts.",
+    body: "When you buy, Kin traces where the wallet got its funds. Wallets paid by the same source share one limit, and every limit handed out is public.",
     icon: "M8 8a3 3 0 1 1 0 .01M16 16a3 3 0 1 1 0 .01M10.4 10.4l3.2 3.2",
   },
   {
@@ -30,9 +30,9 @@ const STEPS = [
 
 const CREATOR_SETTINGS = [
   { k: "Limit per entity", v: "0.01 ETH" },
-  { k: "Fresh-wallet pool", v: "0.02 ETH" },
-  { k: "Registration", v: "24 hours" },
-  { k: "Dispute period", v: "30 minutes" },
+  { k: "Fresh-wallet pool", v: "0.01 ETH" },
+  { k: "Registration", v: "None" },
+  { k: "Window opens", v: "30 min after deploy" },
   { k: "Launch window", v: "30 minutes" },
   { k: "Lock after window", v: "60 minutes" },
 ];
@@ -72,11 +72,11 @@ const FAQ = [
   },
   {
     q: "What if Kin links my wallet to someone else?",
-    a: "Funding links are evidence, not identity. Before the window opens you can dispute a link from the launch page. The launch operator resolves it and every decision is public.",
+    a: "Funding links are evidence, not identity. Every limit Kin hands out is public with the funding link behind it, so a wrong link is visible to everyone. Creators who want a review step can run an allowlist launch instead: wallets register first and can dispute a link before the window opens.",
   },
   {
     q: "What is a fresh wallet?",
-    a: "A wallet with no history, or one younger than the launch allows. Fresh wallets share one pooled limit, split evenly between them, so a farm of new wallets cannot multiply its allowance.",
+    a: "A wallet with no history, or one younger than the launch allows. Fresh wallets share one pooled limit, so a farm of new wallets cannot multiply its allowance.",
   },
   {
     q: "How do I launch a token with Kin?",
@@ -173,7 +173,7 @@ export default function Home() {
             <div>
               <p className="eyebrow">How a launch works</p>
               <h2 id="how-title" className="display-2">
-                Four steps from sign-up to tokens.
+                Four steps, no sign-up.
               </h2>
             </div>
             <Link className="text-link" href="/how-it-works">
@@ -230,8 +230,8 @@ export default function Home() {
               Launch to people, not wallet farms.
             </h2>
             <p className="sec-lede">
-              You choose the limit, the timing and the lock. Kin builds the allowlist, publishes the evidence and runs the
-              window through a hook that refuses settings outside its limits. Any creator share is capped by the hook and
+              You choose the limit, the timing and the lock. Buyers just connect: Kin sets each wallet&apos;s limit when it buys and
+              publishes every decision, and the window runs through a hook that refuses settings outside its limits. Any creator share is capped by the hook and
               shown on the launch receipt.
             </p>
             <div className="ctas">

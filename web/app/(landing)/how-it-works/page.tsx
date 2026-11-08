@@ -143,8 +143,24 @@ export default function HowItWorksPage() {
             idx="03"
             eyebrow="How Kin works"
             title={<span id="how-title">From sign-up to open trading, in five steps.</span>}
+            lede="This is an allowlist launch, where wallets register first. Instant launches skip the sign-up: see below."
           />
           <HowItWorks />
+          <div className="hiw-instant reveal">
+            <h3>Instant launches: the same limits, no registration</h3>
+            <p>
+              A creator can launch without an allowlist. Buyers just connect. From 10 minutes before the window, a wallet that
+              asks to buy gets traced on the spot (the same two-hop funding trace) and assigned an entity: it joins an earlier
+              buyer&apos;s entity if they share a funder, the fresh pool if it is new, or gets its own limit. The engine signs a
+              10-minute permit for that entity and limit, and the KinHook checks the signature in the swap, then charges the
+              buy to the entity&apos;s running total exactly as above.
+            </p>
+            <p>
+              What changes: no dispute period, so every assignment is public instead, with the funding link behind it, and
+              the rules&apos; hash is committed onchain at deploy. The engine has to be online through the window, and the hook
+              trusts its permit signer.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -377,7 +393,11 @@ export default function HowItWorksPage() {
             </li>
             <li>
               <h3>Disputes are resolved by the launch operator.</h3>
-              <p>Anyone can dispute before the window and every resolution is public, but the decision is a trusted role today.</p>
+              <p>
+                In allowlist launches anyone can dispute before the window and every resolution is public, but the decision is a
+                trusted role today. Instant launches have no disputes: the engine&apos;s permit signer decides at buy time, and
+                every decision is published.
+              </p>
             </li>
             <li>
               <h3>Kin is not on Base mainnet.</h3>

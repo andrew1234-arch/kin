@@ -8,7 +8,7 @@ import { kinHookAbi } from "@/lib/abi";
 import { api, ApiError } from "@/lib/api";
 import { API_URL, DEPLOYMENT, LAUNCH_EXPLORER } from "@/lib/config";
 import { eth, pct } from "@/lib/format";
-import type { LaunchView } from "@/lib/types";
+import { isInstant, type LaunchView } from "@/lib/types";
 
 interface OnchainReceipt {
   finalized: boolean;
@@ -63,6 +63,11 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
   if (!r) return <p className="muted">Reading the chain…</p>;
 
   const evidenceOk = fileHash ? fileHash.toLowerCase() === r.evidenceHash.toLowerCase() : null;
+  // Instant launches commit no allowlist: their linked and fresh counts come from the public permit assignments.
+  const instant = isInstant(launch);
+  const groups = instant
+    ? { linkedWallets: launch.instant?.linkedWallets ?? 0, freshWallets: launch.instant?.freshWallets ?? 0 }
+    : r.allowlist;
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -87,9 +92,9 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
         </div>
         {!compact && (
           <div className="stat">
-            <div className="stat-value">{r.allowlist.linkedWallets}</div>
+            <div className="stat-value">{groups.linkedWallets}</div>
             <div className="stat-label">wallets linked into multi-wallet entities</div>
-            <div className="stat-sub">{r.allowlist.freshWallets} in the fresh pool</div>
+            <div className="stat-sub">{groups.freshWallets} in the fresh pool</div>
           </div>
         )}
         <div className="stat">
@@ -103,13 +108,13 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
           <>
             <dt>Linked / fresh wallets</dt>
             <dd>
-              {r.allowlist.linkedWallets} / {r.allowlist.freshWallets}
+              {groups.linkedWallets} / {groups.freshWallets}
             </dd>
           </>
         )}
-        <dt>Merkle root</dt>
-        <dd className="mono">{r.root}</dd>
-        <dt>Evidence hash</dt>
+        <dt>{instant ? "Allowlist" : "Merkle root"}</dt>
+        <dd className={instant ? undefined : "mono"}>{instant ? "none: limits were set by signed permits at buy time" : r.root}</dd>
+        <dt>{instant ? "Policy hash" : "Evidence hash"}</dt>
         <dd className="mono">{r.evidenceHash}</dd>
         <dt>Evidence check</dt>
         <dd>
@@ -133,8 +138,8 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
             </dd>
             <dt>Source</dt>
             <dd>
-              KinHook.getReceipt on chain {launch.chainId}; window values are recorded by the hook, allowlist values are
-              committed with the evidence hash.
+              KinHook.getReceipt on chain {launch.chainId}; window values are recorded by the hook,{" "}
+              {instant ? "linked and fresh counts come from the public permit assignments." : "allowlist values are committed with the evidence hash."}
             </dd>
           </>
         )}

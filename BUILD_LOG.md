@@ -4,6 +4,66 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D4, Sun 8 Nov 2026: instant launches (no registration)
+
+Tool: AI coding agent. Prompt: the owner asked whether the funding check could run automatically at buy time,
+with no registration, because the sign-up step was a blocker; then "start working on it".
+
+### Built
+
+- **KinHook** (`contracts/src/KinHook.sol`): an immutable `permitSigner` and EIP-712 domain ("KinHook", "1").
+  A launch configured with root 0 is an instant launch; its buys carry a `KinPermit(poolId, buyer, entityId,
+  entityCap, deadline)` signature instead of a Merkle proof, packed into the router's existing `proof` array as
+  `[deadline, r, yParityAndS]` (EIP-2098), so the router ABI is unchanged. Everything after the check is the same
+  code path: per-entity running total, cap pinned by the first buy, vault, receipt. New errors `PermitExpired`,
+  `BadPermit`. A hook deployed without a permit signer refuses instant launches. `DeployKin` takes
+  `KIN_PERMIT_SIGNER` (default: the deployer) and records it in the deployment file; the script was split into
+  helpers to stay under the stack limit.
+- **Engine** (`engine/src/launch/instant.ts`, `service.ts`, `onchain.ts`, `admin.ts`, `server.ts`):
+  `POST /launches/:slug/permit` traces the wallet's funding at that moment (same two-hop trace, exchanges excluded),
+  assigns it (linked to an earlier buyer or funder → that entity and cap; fresh → one shared fresh pool; otherwise
+  its own entity), stores the assignment append-only under the store lock, and signs a 10-minute permit. Permits
+  are handed out from 10 minutes before the window until it ends; contract wallets are refused.
+  `GET /launches/:slug/permits` publishes every assignment with its funding links. The rules are a canonical
+  policy file whose keccak256 is committed onchain as the evidence hash at deploy (`evidence.json` serves it).
+  `admin create-instant` creates and deploys in one step. Registration, build and disputes refuse instant launches.
+- **Web**: the launch page shows "Check my limit" instead of Register for instant launches, then the normal buy
+  form with the signed permit (re-fetched before it expires); a rules card checks the policy hash against the
+  chain and shows the hook's permit signer; a public table of every limit handed out replaces disputes. Launch
+  cards, phase labels, the receipt, the configurator (instant is the default mode), the landing steps and FAQ, and
+  How it works were updated.
+- **Local seed**: `demo-instant` (3 aged wallets from one funder, 1 unrelated aged wallet, 1 fresh wallet) asks the
+  engine for permits over HTTP and buys through KinRouter against the real hook.
+
+### Trade-offs, stated
+
+- No dispute period: a wrong link can't be fixed before the buy. Every assignment is public instead.
+- The hook trusts the permit signer; the engine must be online through the window.
+- Two entities that have both bought can't be merged later: the first buy pins each entity's cap and total.
+- A bundle of brand-new wallets lands in the shared fresh pool, which is bounded by its own cap, but it is first
+  come, first served: a young bundle can use the pool up before genuine new wallets arrive (seen in the first local
+  run, where 3 just-funded bundle wallets filled the pool and the fresh buyer's buy reverted). Allowlist launches
+  split the pool evenly instead, since they know every fresh wallet in advance. A per-wallet ceiling inside the
+  pool would need a field in the permit; not built.
+
+### Fixed on the way
+
+- `deployLaunch` padded `kin:<slug>:<ms>` into a bytes32 salt, so any slug longer than 14 characters failed to
+  deploy (`SizeOverflowError`), in both modes. The salt is now its keccak256.
+
+### Verified
+
+- `forge test`: 53 passed (12 new in `KinInstant.t.sol`: permit buy, shared cap, cap pinned, expired, wrong signer,
+  another wallet's permit, tampered entity or cap, another pool's permit, malformed, window still gated, hook with
+  no signer refuses instant launches). `bun test`: 57 passed (5 new in `instant.test.ts`). Engine and web `tsc`
+  clean; `next build` passes.
+- Local stack, engine-signed permits against the real hook over HTTP: bundle wallet 1 aged success, bundle wallet 2
+  linked success, bundle wallet 3 linked reverted (shared cap), unrelated aged success, fresh success. The launch page
+  shows the policy-hash check passing against the chain and the public assignment table.
+- Allowlist demo in the same run: bundle 3 success / 3 reverted, aged 2 success, fresh 3 success, finalized.
+
+---
+
 ## D4, Sun 8 Nov 2026: architecture and system-design review
 
 Tool: AI coding agent. Prompt: run a max-level review of the contracts, the chain usage and the system design,

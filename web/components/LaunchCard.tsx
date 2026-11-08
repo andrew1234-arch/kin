@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Source } from "@/components/Source";
 import { duration, eth } from "@/lib/format";
-import { PHASE_LABEL, phaseOf, type LaunchView, type Phase } from "@/lib/types";
+import { isInstant, phaseLabel, phaseOf, type LaunchView, type Phase } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 
 const ACTION: Record<Phase, string> = {
@@ -14,6 +14,7 @@ const ACTION: Record<Phase, string> = {
   locked: "View launch",
   claimable: "Claim tokens",
 };
+const INSTANT_ACTION: Record<Phase, string> = { ...ACTION, registration: "View launch", dispute: "View launch", window: "Buy now" };
 
 function nextStep(l: LaunchView, phase: Phase, now: number): string {
   const o = l.onchain;
@@ -23,7 +24,7 @@ function nextStep(l: LaunchView, phase: Phase, now: number): string {
     case "building":
       return l.allowlist ? "Allowlist built, deploying soon" : "Building the allowlist";
     case "dispute":
-      return `Window opens in ${duration(o!.windowStart - now)}`;
+      return `${isInstant(l) ? "No registration. " : ""}Window opens in ${duration(o!.windowStart - now)}`;
     case "window":
       return `Window closes in ${duration(o!.windowEnd - now)}`;
     case "locked":
@@ -37,14 +38,15 @@ function nextStep(l: LaunchView, phase: Phase, now: number): string {
 export function LaunchCard({ launch }: { launch: LaunchView }) {
   const now = useNow();
   const phase = now ? phaseOf(launch, now) : null;
-  const live = phase === "registration" || phase === "window";
+  const instant = isInstant(launch);
+  const live = (phase === "registration" && !instant) || phase === "window";
   return (
     <Link href={`/launch/${launch.slug}`} className="launch-card">
       <div className="launch-card-top">
         <span className="token-badge" aria-hidden="true">
           {launch.symbol.slice(0, 2)}
         </span>
-        {phase && <span className={`phase-pill${live ? " phase-pill-live" : ""}`}>{PHASE_LABEL[phase]}</span>}
+        {phase && <span className={`phase-pill${live ? " phase-pill-live" : ""}`}>{phaseLabel(launch, phase)}</span>}
       </div>
       <div className="launch-card-id">
         <h3>{launch.name}</h3>
@@ -52,8 +54,8 @@ export function LaunchCard({ launch }: { launch: LaunchView }) {
       </div>
       <dl className="launch-card-nums">
         <div>
-          <dt>Registered</dt>
-          <dd>{launch.registrations}</dd>
+          <dt>{instant ? "Buyers" : "Registered"}</dt>
+          <dd>{instant ? (launch.instant?.wallets ?? 0) : launch.registrations}</dd>
         </div>
         <div>
           <dt>Entity limit</dt>
@@ -67,7 +69,7 @@ export function LaunchCard({ launch }: { launch: LaunchView }) {
       <div className="launch-card-foot">
         <span className="small muted">{phase && now ? nextStep(launch, phase, now) : " "}</span>
         <span className="launch-card-cta">
-          {phase ? ACTION[phase] : "View launch"}
+          {phase ? (instant ? INSTANT_ACTION : ACTION)[phase] : "View launch"}
           <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" className="arrow">
             <path d="M2 7h9M7.5 3.5 11 7l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

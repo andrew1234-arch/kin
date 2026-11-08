@@ -27,64 +27,88 @@ import {Addresses} from "./Addresses.sol";
 ///
 ///   forge script script/DeployKin.s.sol --rpc-url base_sepolia --broadcast
 contract DeployKin is Script {
+    struct Deployed {
+        address deployer;
+        address pm;
+        address otherRouter;
+        KinRouter router;
+        KinHook hook;
+        bytes32 salt;
+        KinVault vault;
+        KinLaunchFactory factory;
+        KinLaunchFactory plainFactory;
+        address permitSigner;
+        KinHook.Limits limits;
+    }
+
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(pk);
-        address pm = Addresses.poolManager(block.chainid);
-        address otherRouter =
-            block.chainid == Addresses.BASE_SEPOLIA ? Addresses.BASE_SEPOLIA_POOL_SWAP_TEST : address(0);
+        Deployed memory d;
+        d.deployer = vm.addr(pk);
+        d.pm = Addresses.poolManager(block.chainid);
+        d.otherRouter = block.chainid == Addresses.BASE_SEPOLIA ? Addresses.BASE_SEPOLIA_POOL_SWAP_TEST : address(0);
+        d.limits = _limits();
+        // Signs buy permits for instant launches; defaults to the deployer (the engine operator's key).
+        d.permitSigner = vm.envOr("KIN_PERMIT_SIGNER", d.deployer);
 
         vm.startBroadcast(pk);
-        if (pm == address(0)) {
+        if (d.pm == address(0)) {
             require(block.chainid == Addresses.ANVIL, "no PoolManager address for this chain");
-            pm = address(new PoolManager(deployer));
-            otherRouter = address(new PoolSwapTest(IPoolManager(pm)));
+            d.pm = address(new PoolManager(d.deployer));
+            d.otherRouter = address(new PoolSwapTest(IPoolManager(d.pm)));
         }
+        d.router = new KinRouter(IPoolManager(d.pm), d.deployer);
+        _deployHook(d);
+        d.vault = new KinVault(d.hook, address(d.router));
+        d.router.wire(d.hook, d.vault);
+        d.factory = new KinLaunchFactory(IPoolManager(d.pm), d.hook);
+        d.hook.setFactory(address(d.factory));
+        d.plainFactory = new KinLaunchFactory(IPoolManager(d.pm), KinHook(address(0)));
+        vm.stopBroadcast();
 
-        KinHook.Limits memory limits = _limits();
-        KinRouter router = new KinRouter(IPoolManager(pm), deployer);
-        bytes memory args = abi.encode(pm, address(router), deployer, limits);
+        console2.log("chainId     ", block.chainid);
+        console2.log("PoolManager ", d.pm);
+        console2.log("KinRouter   ", address(d.router));
+        console2.log("KinHook     ", address(d.hook));
+        console2.log("KinVault    ", address(d.vault));
+        console2.log("Factory     ", address(d.factory));
+        console2.log("PlainFactory", address(d.plainFactory));
+        console2.log("OtherRouter ", d.otherRouter);
+        console2.log("PermitSigner", d.permitSigner);
+        _write(d);
+    }
+
+    function _deployHook(Deployed memory d) internal {
+        bytes memory args = abi.encode(d.pm, address(d.router), d.deployer, d.limits, d.permitSigner);
         (address predicted, bytes32 salt) = HookMiner.find(
             Addresses.CREATE2_DEPLOYER,
             uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG),
             type(KinHook).creationCode,
             args
         );
-        KinHook hook = new KinHook{salt: salt}(IPoolManager(pm), address(router), deployer, limits);
-        require(address(hook) == predicted, "hook address mismatch");
+        d.hook = new KinHook{salt: salt}(IPoolManager(d.pm), address(d.router), d.deployer, d.limits, d.permitSigner);
+        require(address(d.hook) == predicted, "hook address mismatch");
+        d.salt = salt;
+    }
 
-        KinVault vault = new KinVault(hook, address(router));
-        router.wire(hook, vault);
-        KinLaunchFactory factory = new KinLaunchFactory(IPoolManager(pm), hook);
-        hook.setFactory(address(factory));
-        KinLaunchFactory plainFactory = new KinLaunchFactory(IPoolManager(pm), KinHook(address(0)));
-        vm.stopBroadcast();
-
-        console2.log("chainId     ", block.chainid);
-        console2.log("PoolManager ", pm);
-        console2.log("KinRouter   ", address(router));
-        console2.log("KinHook     ", address(hook));
-        console2.log("KinVault    ", address(vault));
-        console2.log("Factory     ", address(factory));
-        console2.log("PlainFactory", address(plainFactory));
-        console2.log("OtherRouter ", otherRouter);
-
+    function _write(Deployed memory d) internal {
         string memory k = "deployment";
         vm.serializeUint(k, "chainId", block.chainid);
-        vm.serializeAddress(k, "deployer", deployer);
-        vm.serializeAddress(k, "poolManager", pm);
-        vm.serializeAddress(k, "otherRouter", otherRouter);
-        vm.serializeAddress(k, "kinRouter", address(router));
-        vm.serializeAddress(k, "kinHook", address(hook));
-        vm.serializeBytes32(k, "kinHookSalt", salt);
-        vm.serializeAddress(k, "kinVault", address(vault));
-        vm.serializeAddress(k, "plainFactory", address(plainFactory));
-        vm.serializeUint(k, "minReviewPeriod", limits.minReviewPeriod);
-        vm.serializeUint(k, "minWindow", limits.minWindow);
-        vm.serializeUint(k, "maxWindow", limits.maxWindow);
-        vm.serializeUint(k, "maxLock", limits.maxLock);
-        vm.serializeUint(k, "maxCreatorBps", limits.maxCreatorBps);
-        string memory json = vm.serializeAddress(k, "factory", address(factory));
+        vm.serializeAddress(k, "deployer", d.deployer);
+        vm.serializeAddress(k, "poolManager", d.pm);
+        vm.serializeAddress(k, "otherRouter", d.otherRouter);
+        vm.serializeAddress(k, "kinRouter", address(d.router));
+        vm.serializeAddress(k, "kinHook", address(d.hook));
+        vm.serializeBytes32(k, "kinHookSalt", d.salt);
+        vm.serializeAddress(k, "kinVault", address(d.vault));
+        vm.serializeAddress(k, "plainFactory", address(d.plainFactory));
+        vm.serializeUint(k, "minReviewPeriod", d.limits.minReviewPeriod);
+        vm.serializeUint(k, "minWindow", d.limits.minWindow);
+        vm.serializeUint(k, "maxWindow", d.limits.maxWindow);
+        vm.serializeUint(k, "maxLock", d.limits.maxLock);
+        vm.serializeUint(k, "maxCreatorBps", d.limits.maxCreatorBps);
+        vm.serializeAddress(k, "permitSigner", d.permitSigner);
+        string memory json = vm.serializeAddress(k, "factory", address(d.factory));
         string memory name = vm.envOr("KIN_DEPLOYMENT_NAME", string(""));
         string memory suffix = bytes(name).length == 0 ? "" : string.concat("-", name);
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), suffix, ".json"));

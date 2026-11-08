@@ -35,6 +35,8 @@ else
 fi
 export EXTRA_EXCLUSIONS="$DEPLOYER"
 export LAUNCH_RPC_URL="$RPC" LAUNCH_CHAIN_ID=31337 LAUNCH_HISTORY_PROVIDER=rpc-scan
+# DeployKin makes the deployer the hook's permit signer, so the engine signs instant-launch permits with it.
+export PERMIT_SIGNER_KEY="$DEPLOYER_PRIVATE_KEY"
 export SANDBOX_RPC_URL="$RPC" SANDBOX_RELAYER_KEY="$DEPLOYER_PRIVATE_KEY" SANDBOX_DEPLOYMENT="$ROOT/contracts/deployments/31337.json" SANDBOX_WINDOW_DELAY_SEC=3
 export PORT=${PORT:-8787}
 bun run src/server.ts &

@@ -755,6 +755,7 @@ a.launch-card:hover { border-color: var(--faint); transform: translateY(-2px); }
 .launch-head-id h1 .faint { font: 400 0.42em var(--mono); letter-spacing: 0; vertical-align: 0.35em; }
 .launch-head-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .stepper { list-style: none; margin: 0; padding: 6px 0 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.stepper-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .stepper li { position: relative; padding: 18px 8px 0 0; border-top: 2px solid var(--line); color: var(--faint); font-size: 13.5px; font-weight: 500; }
 .stepper li.is-done { color: var(--muted); border-top-color: var(--fg); }
 .stepper li.is-now { color: var(--fg); border-top-color: var(--accent); }
@@ -790,6 +791,18 @@ a.launch-card:hover { border-color: var(--faint); transform: translateY(-2px); }
 .field-hint, .field-error { font-size: 12.5px; margin: 6px 0 0; min-height: 1.45em; }
 .field-hint { color: var(--faint); }
 .field-error { color: var(--bad); }
+.hiw-instant { margin-top: 48px; padding: 28px 30px; border: 1px solid var(--line); border-radius: 22px; max-width: 860px; }
+.hiw-instant h3 { margin: 0 0 12px; font-size: 20px; }
+.hiw-instant p { color: var(--muted); margin: 0 0 12px; line-height: 1.6; }
+.hiw-instant p:last-child { margin-bottom: 0; }
+@media (max-width: 600px) { .hiw-instant { padding: 22px 20px; } }
+.mode-pick { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 4px; }
+.mode-opt { display: block; text-align: left; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; font: inherit; transition: border-color 0.2s ease, background-color 0.2s ease; }
+.mode-opt:hover { border-color: var(--faint); }
+.mode-opt[aria-checked="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.mode-opt strong { display: block; font-size: 15px; font-weight: 600; }
+.mode-opt span { display: block; margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+@media (max-width: 520px) { .mode-pick { grid-template-columns: minmax(0, 1fr); } }
 .field-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .newlaunch-side { position: sticky; top: calc(var(--nav-h) + 16px); }
 .summary ul { list-style: none; padding: 0; margin: 0; }

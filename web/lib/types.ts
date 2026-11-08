@@ -118,6 +118,8 @@ export interface AllowlistStats {
 
 export interface LaunchView {
   slug: string;
+  /** "instant": no registration; the engine traces funding when a wallet buys and signs a permit. */
+  mode?: "allowlist" | "instant";
   chainId: number;
   name: string;
   symbol: string;
@@ -142,7 +144,22 @@ export interface LaunchView {
     lockDuration: number;
     rootVersion: number;
   };
+  instant?: null | { evidenceHash: string | null; wallets: number; entities: number; linkedWallets: number; freshWallets: number };
 }
+
+/** A signed buy permit for an instant launch; `proof` goes straight into the router call. */
+export interface Permit {
+  wallet: string;
+  entityId: `0x${string}`;
+  tier: "linked" | "fresh" | "aged";
+  cap: string;
+  deadline: number;
+  proof: `0x${string}`[];
+  entityMembers: number;
+  via?: string;
+}
+
+export const isInstant = (l: LaunchView) => l.mode === "instant";
 
 export interface AllowlistEntry {
   wallet: string;
@@ -172,6 +189,16 @@ export const PHASE_LABEL: Record<Phase, string> = {
   locked: "Vault locked",
   claimable: "Open trading",
 };
+
+/** Labels for an instant launch: there is no registration or dispute period, only a countdown to the window. */
+export const INSTANT_PHASE_LABEL: Record<Phase, string> = {
+  ...PHASE_LABEL,
+  registration: "Deploying",
+  building: "Deploying",
+  dispute: "Starts soon",
+};
+
+export const phaseLabel = (l: LaunchView, p: Phase) => (isInstant(l) ? INSTANT_PHASE_LABEL : PHASE_LABEL)[p];
 
 export function phaseOf(l: LaunchView, now: number): Phase {
   if (!l.onchain) return now < l.registrationClosesAt && !l.allowlist ? "registration" : "building";

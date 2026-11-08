@@ -12,6 +12,8 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 /// @title KinHook
 /// @notice Entity-capped launch windows for Uniswap v4 pools.
@@ -35,8 +37,13 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 ///   keccak256(bytes.concat(keccak256(abi.encode(wallet, entityId, entityCap))))
 /// Proofs use sorted-pair hashing (OpenZeppelin MerkleProof / StandardMerkleTree compatible).
 ///
+/// Instant launches (root == 0) have no allowlist and no registration. The Kin engine traces a buyer's funding
+/// when they buy and signs a short-lived EIP-712 KinPermit(poolId, buyer, entityId, entityCap, deadline) with
+/// `permitSigner`. The router's `proof` field then carries the permit as [deadline, r, vs] (EIP-2098 compact
+/// signature). Every other rule (one running total per entity, cap pinned by the entity's first buy) is the same.
+///
 /// Claims discipline: this makes bundling expensive and visible. It does not stop it.
-contract KinHook is BaseHook {
+contract KinHook is BaseHook, EIP712 {
     using PoolIdLibrary for PoolKey;
 
     // ---------------------------------------------------------------------
@@ -130,6 +137,11 @@ contract KinHook is BaseHook {
     uint64 public immutable maxLock;
     uint16 public immutable maxCreatorBps;
     address public factory;
+    /// @notice Signs buy permits for instant launches (root == 0). Zero disables instant launches on this hook.
+    address public immutable permitSigner;
+
+    bytes32 public constant PERMIT_TYPEHASH =
+        keccak256("KinPermit(bytes32 poolId,address buyer,bytes32 entityId,uint256 entityCap,uint64 deadline)");
 
     mapping(PoolId => Launch) internal _launches;
     mapping(PoolId => WindowStats) internal _windowStats;
@@ -178,8 +190,13 @@ contract KinHook is BaseHook {
     error EntityCapMismatch(bytes32 entity, uint256 provenCap, uint256 leafCap);
     error WindowNotEnded();
     error AlreadyFinalized();
+    error PermitExpired(uint64 deadline);
+    error BadPermit();
 
-    constructor(IPoolManager _manager, address _kinRouter, address _owner, Limits memory _limits) BaseHook(_manager) {
+    constructor(IPoolManager _manager, address _kinRouter, address _owner, Limits memory _limits, address _permitSigner)
+        BaseHook(_manager)
+        EIP712("KinHook", "1")
+    {
         if (_limits.minWindow == 0 || _limits.minWindow > _limits.maxWindow || _limits.maxCreatorBps > 10_000) {
             revert InvalidConfig();
         }
@@ -190,6 +207,7 @@ contract KinHook is BaseHook {
         maxWindow = _limits.maxWindow;
         maxLock = _limits.maxLock;
         maxCreatorBps = _limits.maxCreatorBps;
+        permitSigner = _permitSigner;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory p) {
@@ -237,7 +255,7 @@ contract KinHook is BaseHook {
 
     function _checkConfig(LaunchConfig calldata cfg) internal view {
         if (
-            cfg.root == bytes32(0) || cfg.admin == address(0) || cfg.totalSupply == 0
+            (cfg.root == bytes32(0) && permitSigner == address(0)) || cfg.admin == address(0) || cfg.totalSupply == 0
                 || cfg.windowStart < block.timestamp + minReviewPeriod || cfg.windowEnd < cfg.windowStart + minWindow
                 || cfg.windowEnd > cfg.windowStart + maxWindow || cfg.lockDuration > maxLock
                 || cfg.creatorAllocation * 10_000 > cfg.totalSupply * maxCreatorBps
@@ -304,7 +322,8 @@ contract KinHook is BaseHook {
     }
 
     function _windowBuy(PoolId id, bytes32 root, uint256 paid, bytes calldata hookData) internal {
-        (address buyer, bytes32 entityId, uint256 entityCap) = _verifyLeaf(root, hookData);
+        (address buyer, bytes32 entityId, uint256 entityCap) =
+            root == bytes32(0) ? _verifyPermit(id, hookData) : _verifyLeaf(root, hookData);
 
         // The first buy of an entity pins its cap; every later leaf for that entity must prove the same cap.
         EntityState storage e = _entities[id][entityId];
@@ -332,6 +351,26 @@ contract KinHook is BaseHook {
         (buyer, entityId, entityCap, proof) = abi.decode(hookData, (address, bytes32, uint256, bytes32[]));
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(buyer, entityId, entityCap))));
         if (!MerkleProof.verify(proof, root, leaf)) revert NotOnAllowlist();
+    }
+
+    /// @dev Instant launches: `proof` is [deadline, r, vs], a KinPermit signed by `permitSigner` for this pool and
+    ///      exactly this buyer (the router writes its own msg.sender as the buyer, so a permit can't be reused by
+    ///      another wallet).
+    function _verifyPermit(PoolId id, bytes calldata hookData)
+        internal
+        view
+        returns (address buyer, bytes32 entityId, uint256 entityCap)
+    {
+        bytes32[] memory p;
+        (buyer, entityId, entityCap, p) = abi.decode(hookData, (address, bytes32, uint256, bytes32[]));
+        if (p.length != 3) revert BadPermit();
+        uint64 deadline = uint64(uint256(p[0]));
+        if (block.timestamp > deadline) revert PermitExpired(deadline);
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(abi.encode(PERMIT_TYPEHASH, PoolId.unwrap(id), buyer, entityId, entityCap, deadline))
+        );
+        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, p[1], p[2]);
+        if (err != ECDSA.RecoverError.NoError || signer != permitSigner || signer == address(0)) revert BadPermit();
     }
 
     function _recordStats(
