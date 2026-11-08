@@ -12,6 +12,10 @@ one cap, fresh wallets share one pooled cap, aged unlinked wallets get their own
 hook only accepts buys through the Kin router, within each entity's cap, and the tokens sit in a vault until the
 lock ends. Then trading opens to everyone. This makes bundling expensive and visible; it does not stop it.
 
+What Kin does not protect, by design today: buys after the window (open trading, no caps), the order of buys
+inside the window (earlier buys get a better price), and the launcher's honesty about the root and evidence
+(anyone can recompute them from the published evidence, but nothing onchain checks them). See BUILD_LOG.md.
+
 ## Layout
 
 ```
@@ -26,8 +30,8 @@ BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 
 | Piece | State |
 |---|---|
-| Contracts | 31 tests pass (`cd contracts && forge test`) |
-| Engine | 47 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Contracts | 41 tests pass (`cd contracts && forge test`) |
+| Engine | 49 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
 | Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |
 | Kin Launch (register → allowlist + evidence → dispute → window buy → vault → claim → receipt) | Built; verified on a local chain. Not yet on Base Sepolia |

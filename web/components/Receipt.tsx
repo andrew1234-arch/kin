@@ -25,6 +25,8 @@ interface OnchainReceipt {
   };
   largestEntityShareBps: bigint;
   allowlist: { allowlistedWallets: number; entities: number; linkedWallets: number; freshWallets: number };
+  totalSupply: bigint;
+  creatorAllocation: bigint;
 }
 
 /**
@@ -67,7 +69,7 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
         <h3 style={{ margin: 0 }}>
           Fairness Receipt · {launch.name} <span className="muted">${launch.symbol}</span>
         </h3>
-        <span className={`pill ${r.finalized ? "pill-aged" : "pill-fresh"}`}>{r.finalized ? "finalized" : "not finalized yet"}</span>
+        <span className={`pill ${r.finalized ? "pill-aged" : "pill-fresh"}`}>{r.finalized ? "final" : "window still open"}</span>
       </div>
       <div className="stats" style={{ margin: "14px 0" }}>
         <div className="stat">
@@ -90,6 +92,11 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
             <div className="stat-sub">{r.allowlist.freshWallets} in the fresh pool</div>
           </div>
         )}
+        <div className="stat">
+          <div className="stat-value">{r.totalSupply > 0n ? pct(Number((r.creatorAllocation * 10_000n) / r.totalSupply)) : "—"}</div>
+          <div className="stat-label">of supply kept by the creator</div>
+          <div className="stat-sub">outside every cap</div>
+        </div>
       </div>
       <dl className="kv small">
         {compact && (

@@ -3,7 +3,7 @@ import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 import { encodeAbiParameters, keccak256, toBytes, concat, type Hex } from "viem";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildAllowlist, FRESH_POOL_ID, LEAF_ENCODING, type TierConfig } from "../src/allowlist/build";
+import { assignEntities, buildAllowlist, freshEntityId, LEAF_ENCODING, type TierConfig } from "../src/allowlist/build";
 import { clusterByFunding } from "../src/cluster/cluster";
 import { sandboxScenario } from "./scenario";
 
@@ -27,17 +27,18 @@ function build() {
 }
 
 describe("buildAllowlist", () => {
-  test("tiers: bundle -> one linked entity, aged -> own entity, fresh -> one pooled entity", () => {
+  test("tiers: bundle -> one linked entity, aged -> own entity, fresh -> an even share of the fresh pool each", () => {
     const { s, out } = build();
-    expect(out.stats).toEqual({ allowlistedWallets: 25, entities: 4, linkedWallets: 20, freshWallets: 3 });
+    expect(out.stats).toEqual({ allowlistedWallets: 25, entities: 6, linkedWallets: 20, freshWallets: 3 });
 
     const bundleIds = new Set(out.entries.filter((e) => s.bundle.includes(e.wallet)).map((e) => e.entityId));
     expect(bundleIds.size).toBe(1);
     expect(out.entries.find((e) => e.wallet === s.bundle[0])!.cap).toBe(ETH.toString());
 
     const freshEntries = out.entries.filter((e) => s.fresh.includes(e.wallet));
-    expect(new Set(freshEntries.map((e) => e.entityId))).toEqual(new Set([FRESH_POOL_ID]));
-    expect(freshEntries[0]!.cap).toBe((ETH / 2n).toString());
+    expect(new Set(freshEntries.map((e) => e.entityId))).toEqual(new Set(s.fresh.map((w) => freshEntityId(w))));
+    // 0.5 ETH pool / 3 fresh wallets: one actor with a fresh wallet can't take the whole pool first.
+    for (const e of freshEntries) expect(e.cap).toBe((ETH / 2n / 3n).toString());
 
     const alice = out.entries.find((e) => e.wallet === s.alice)!;
     const bob = out.entries.find((e) => e.wallet === s.bob)!;
@@ -88,5 +89,26 @@ describe("buildAllowlist", () => {
     };
     writeFileSync(join(dir, "engine-allowlist.json"), JSON.stringify(fixture, null, 2) + "\n");
     expect(fixture.entries.length).toBe(25);
+  });
+});
+
+describe("fresh by age", () => {
+  test("a wallet first funded recently is fresh even after a self-transaction (nonce > 0)", () => {
+    const t: TierConfig = { ...tiers, freshMaxAgeHours: 168 };
+    const now = 1_700_000_000;
+    const young = "0x00000000000000000000000000000000000000a1" as const;
+    const old = "0x00000000000000000000000000000000000000a2" as const;
+    const { entities } = assignEntities(
+      [
+        { wallet: young, nonce: 1, firstFundedAt: now - 3600 },
+        { wallet: old, nonce: 1, firstFundedAt: now - 30 * 86400 },
+      ],
+      [],
+      t,
+      now,
+    );
+    const tierOf = (w: string) => entities.find((e) => e.members.some((m) => m.toLowerCase() === w))!.tier;
+    expect(tierOf(young)).toBe("fresh");
+    expect(tierOf(old)).toBe("aged");
   });
 });

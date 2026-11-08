@@ -1,3 +1,4 @@
+import { launchParams } from "../launchParams";
 import {
   createPublicClient,
   createWalletClient,
@@ -29,7 +30,8 @@ export interface SandboxConfig {
   rpcUrl: string;
   chainId: number;
   relayerKey: Hex;
-  deployment: { kinRouter: Address; kinHook: Address; kinVault: Address; factory: Address };
+  /** `plainFactory` is the sandbox-only hookless factory: the Kin factory cannot create plain pools. */
+  deployment: { kinRouter: Address; kinHook: Address; kinVault: Address; factory: Address; plainFactory: Address };
   bundleSize: number;
   perWalletWei: bigint;
   /** The linked entity's cap = capBuys × perWalletWei. */
@@ -175,12 +177,7 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
   const latest = await pub.getBlock();
   const windowStart = latest.timestamp + BigInt(cfg.windowDelaySec);
   const base = {
-    totalSupply: 1_000_000_000n * 10n ** 18n,
-    creatorAllocation: 0n,
-    fee: 10_000,
-    tickSpacing: 200,
-    startTick: 184_200,
-    tickLower: 69_000,
+    ...launchParams(),
     root: allowlist.root,
     evidenceHash: allowlist.evidenceHash,
     stats: allowlist.stats,
@@ -190,7 +187,7 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
   };
   const launch = async (plain: boolean) => {
     const hash = await relayer.writeContract({
-      address: cfg.deployment.factory,
+      address: plain ? cfg.deployment.plainFactory : cfg.deployment.factory,
       abi: kinLaunchFactoryAbi,
       functionName: "createLaunch",
       args: [

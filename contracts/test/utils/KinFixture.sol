@@ -44,11 +44,17 @@ abstract contract KinFixture is Deployers {
     uint64 constant DISPUTE_PERIOD = 1 hours;
     uint64 constant WINDOW = 30 minutes;
     uint64 constant LOCK = 1 days;
+    uint64 constant MIN_REVIEW = 30 minutes;
+    uint64 constant MIN_WINDOW = 5 minutes;
+    uint64 constant MAX_WINDOW = 1 days;
+    uint64 constant MAX_LOCK = 7 days;
+    uint16 constant MAX_CREATOR_BPS = 1000;
 
     KinHook hook;
     KinRouter router;
     KinVault vault;
     KinLaunchFactory factory;
+    KinLaunchFactory plainFactory;
 
     PoolKey kinKey;
     PoolId kinId;
@@ -77,16 +83,18 @@ abstract contract KinFixture is Deployers {
         deployFreshManagerAndRouters();
 
         router = new KinRouter(manager, address(this));
-        bytes memory args = abi.encode(address(manager), address(router), address(this));
-        (address predicted, bytes32 salt) =
-            HookMiner.find(address(this), uint160(Hooks.BEFORE_SWAP_FLAG), type(KinHook).creationCode, args);
-        hook = new KinHook{salt: salt}(manager, address(router), address(this));
+        bytes memory args = abi.encode(address(manager), address(router), address(this), _limits());
+        (address predicted, bytes32 salt) = HookMiner.find(
+            address(this), uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG), type(KinHook).creationCode, args
+        );
+        hook = new KinHook{salt: salt}(manager, address(router), address(this), _limits());
         require(address(hook) == predicted, "hook address mismatch");
 
         vault = new KinVault(hook, address(router));
         router.wire(hook, vault);
         factory = new KinLaunchFactory(manager, hook);
         hook.setFactory(address(factory));
+        plainFactory = new KinLaunchFactory(manager, KinHook(address(0)));
 
         _buildAllowlist();
 
@@ -120,6 +128,16 @@ abstract contract KinFixture is Deployers {
         capOf.push(cap);
         leaves.push(SortedMerkle.leaf(w, entity, cap));
         vm.deal(w, 10 ether);
+    }
+
+    function _limits() internal pure returns (KinHook.Limits memory) {
+        return KinHook.Limits({
+            minReviewPeriod: MIN_REVIEW,
+            minWindow: MIN_WINDOW,
+            maxWindow: MAX_WINDOW,
+            maxLock: MAX_LOCK,
+            maxCreatorBps: MAX_CREATOR_BPS
+        });
     }
 
     function _stats() internal pure returns (KinHook.AllowlistStats memory) {
@@ -195,11 +213,20 @@ abstract contract KinFixture is Deployers {
     }
 
     function _expectHookRevert(bytes memory reason) internal {
+        _expectHookRevert(IHooks.beforeSwap.selector, reason);
+    }
+
+    /// @dev Allowlist and cap checks run in afterSwap (they charge what the swap actually paid).
+    function _expectAfterSwapRevert(bytes memory reason) internal {
+        _expectHookRevert(IHooks.afterSwap.selector, reason);
+    }
+
+    function _expectHookRevert(bytes4 callback, bytes memory reason) internal {
         vm.expectRevert(
             abi.encodeWithSelector(
                 CustomRevert.WrappedError.selector,
                 address(hook),
-                IHooks.beforeSwap.selector,
+                callback,
                 reason,
                 abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )

@@ -10,6 +10,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 /// @title KinHook
@@ -17,11 +18,15 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 ///
 /// Lifecycle of a pool configured by the KinLaunchFactory:
 ///   1. Registration / dispute period (block.timestamp < windowStart): every swap reverts.
-///      The launch admin may replace the allowlist root (e.g. after a dispute).
+///      The launch admin may replace the allowlist root (e.g. after a dispute); every replacement
+///      pushes the window back so at least `minReviewPeriod` remains to inspect the new root.
 ///   2. Window (windowStart <= block.timestamp < windowEnd): only the trusted KinRouter may swap,
 ///      only in the buy direction, exact-input only, and every wallet in the same entity draws from
-///      ONE shared cap. The root is frozen.
-///   3. Open trading (block.timestamp >= windowEnd): any router, any direction.
+///      ONE shared cap, counted in what the swap actually paid (afterSwap). The root is frozen.
+///   3. Open trading (block.timestamp >= windowEnd): any router, any direction. The receipt is final.
+///
+/// Window length, lock length, the minimum review period and the creator's share of supply are
+/// bounded by deploy-time limits (`limits`), so no launch can make the window cosmetic or endless.
 ///
 /// In a v4 hook, `sender` is the router that called PoolManager, not the end user. That is why the
 /// hook trusts exactly one router (KinRouter), which writes its own msg.sender into the hook data.
@@ -47,6 +52,15 @@ contract KinHook is BaseHook {
         uint32 freshWallets; // wallets that share the pooled "fresh" entity cap
     }
 
+    /// @notice Deploy-time bounds every launch on this hook must respect.
+    struct Limits {
+        uint64 minReviewPeriod; // min time between the last root change (or configuration) and windowStart
+        uint64 minWindow;
+        uint64 maxWindow;
+        uint64 maxLock;
+        uint16 maxCreatorBps; // creatorAllocation <= totalSupply * maxCreatorBps / 10_000
+    }
+
     struct LaunchConfig {
         bytes32 root;
         bytes32 evidenceHash;
@@ -56,6 +70,8 @@ contract KinHook is BaseHook {
         bool buyIsZeroForOne;
         address admin; // may update the root before windowStart
         AllowlistStats stats;
+        uint256 totalSupply;
+        uint256 creatorAllocation; // tokens the creator received outside the window
     }
 
     struct Launch {
@@ -68,11 +84,19 @@ contract KinHook is BaseHook {
         bool configured;
         address admin;
         AllowlistStats stats;
+        uint256 totalSupply;
+        uint256 creatorAllocation;
+    }
+
+    /// @notice One entity's window spend and the cap its first buy proved (packed in one slot).
+    struct EntityState {
+        uint128 spent;
+        uint128 cap;
     }
 
     /// @notice Values computed onchain from window buys.
     struct WindowStats {
-        uint256 totalVolume; // sum of exact-input amounts (quote currency) bought in the window
+        uint256 totalVolume; // sum of amounts actually paid (quote currency) in the window
         uint256 largestEntitySpend;
         bytes32 largestEntity;
         uint32 buyerWallets; // distinct wallets that bought
@@ -81,14 +105,17 @@ contract KinHook is BaseHook {
     }
 
     /// @notice The Fairness Receipt for one launch.
+    /// `finalized` is true once the window has ended: nothing in the receipt can change after that.
     struct Receipt {
         bool finalized;
-        uint64 finalizedAt;
+        uint64 finalizedAt; // windowEnd, once finalized
         bytes32 root;
         bytes32 evidenceHash;
         WindowStats window;
         uint256 largestEntityShareBps; // largestEntitySpend * 10_000 / totalVolume
         AllowlistStats allowlist;
+        uint256 totalSupply;
+        uint256 creatorAllocation; // outside every cap; shown so a "fair" window can't hide a large creator share
     }
 
     // ---------------------------------------------------------------------
@@ -97,12 +124,17 @@ contract KinHook is BaseHook {
 
     address public immutable kinRouter;
     address public immutable owner;
+    uint64 public immutable minReviewPeriod;
+    uint64 public immutable minWindow;
+    uint64 public immutable maxWindow;
+    uint64 public immutable maxLock;
+    uint16 public immutable maxCreatorBps;
     address public factory;
 
     mapping(PoolId => Launch) internal _launches;
     mapping(PoolId => WindowStats) internal _windowStats;
-    mapping(PoolId => uint64) public finalizedAt;
-    mapping(PoolId => mapping(bytes32 => uint256)) public entitySpent;
+    mapping(PoolId => bool) public receiptEmitted;
+    mapping(PoolId => mapping(bytes32 => EntityState)) internal _entities;
     mapping(PoolId => mapping(address => uint256)) public buyerSpent;
 
     // ---------------------------------------------------------------------
@@ -110,18 +142,10 @@ contract KinHook is BaseHook {
     // ---------------------------------------------------------------------
 
     event FactorySet(address factory);
-    event LaunchConfigured(
-        PoolId indexed id,
-        address indexed admin,
-        bytes32 root,
-        bytes32 evidenceHash,
-        uint64 windowStart,
-        uint64 windowEnd,
-        uint64 lockDuration,
-        bool buyIsZeroForOne,
-        AllowlistStats stats
+    event LaunchConfigured(PoolId indexed id, address indexed admin, LaunchConfig cfg);
+    event AllowlistUpdated(
+        PoolId indexed id, bytes32 root, bytes32 evidenceHash, AllowlistStats stats, uint64 windowStart, uint64 windowEnd
     );
-    event AllowlistUpdated(PoolId indexed id, bytes32 root, bytes32 evidenceHash, AllowlistStats stats);
     event WindowBuy(
         PoolId indexed id, bytes32 indexed entity, address indexed buyer, uint256 amountIn, uint256 entitySpent
     );
@@ -151,16 +175,26 @@ contract KinHook is BaseHook {
     error ExactInputOnly();
     error NotOnAllowlist();
     error EntityCapExceeded(bytes32 entity, uint256 cap, uint256 attempted);
+    error EntityCapMismatch(bytes32 entity, uint256 provenCap, uint256 leafCap);
     error WindowNotEnded();
     error AlreadyFinalized();
 
-    constructor(IPoolManager _manager, address _kinRouter, address _owner) BaseHook(_manager) {
+    constructor(IPoolManager _manager, address _kinRouter, address _owner, Limits memory _limits) BaseHook(_manager) {
+        if (_limits.minWindow == 0 || _limits.minWindow > _limits.maxWindow || _limits.maxCreatorBps > 10_000) {
+            revert InvalidConfig();
+        }
         kinRouter = _kinRouter;
         owner = _owner;
+        minReviewPeriod = _limits.minReviewPeriod;
+        minWindow = _limits.minWindow;
+        maxWindow = _limits.maxWindow;
+        maxLock = _limits.maxLock;
+        maxCreatorBps = _limits.maxCreatorBps;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory p) {
         p.beforeSwap = true;
+        p.afterSwap = true;
     }
 
     // ---------------------------------------------------------------------
@@ -184,10 +218,7 @@ contract KinHook is BaseHook {
         PoolId id = key.toId();
         Launch storage l = _launches[id];
         if (l.configured) revert AlreadyConfigured();
-        if (
-            cfg.root == bytes32(0) || cfg.windowStart < block.timestamp || cfg.windowEnd <= cfg.windowStart
-                || cfg.admin == address(0)
-        ) revert InvalidConfig();
+        _checkConfig(cfg);
 
         l.root = cfg.root;
         l.evidenceHash = cfg.evidenceHash;
@@ -198,21 +229,24 @@ contract KinHook is BaseHook {
         l.configured = true;
         l.admin = cfg.admin;
         l.stats = cfg.stats;
+        l.totalSupply = cfg.totalSupply;
+        l.creatorAllocation = cfg.creatorAllocation;
 
-        emit LaunchConfigured(
-            id,
-            cfg.admin,
-            cfg.root,
-            cfg.evidenceHash,
-            cfg.windowStart,
-            cfg.windowEnd,
-            cfg.lockDuration,
-            cfg.buyIsZeroForOne,
-            cfg.stats
-        );
+        emit LaunchConfigured(id, cfg.admin, cfg);
+    }
+
+    function _checkConfig(LaunchConfig calldata cfg) internal view {
+        if (
+            cfg.root == bytes32(0) || cfg.admin == address(0) || cfg.totalSupply == 0
+                || cfg.windowStart < block.timestamp + minReviewPeriod || cfg.windowEnd < cfg.windowStart + minWindow
+                || cfg.windowEnd > cfg.windowStart + maxWindow || cfg.lockDuration > maxLock
+                || cfg.creatorAllocation * 10_000 > cfg.totalSupply * maxCreatorBps
+        ) revert InvalidConfig();
     }
 
     /// @notice Replace the allowlist during the dispute period. Frozen from windowStart onwards.
+    ///         If less than `minReviewPeriod` remains before the window, the window (start and end) moves
+    ///         back so that a full review period follows every root change.
     function updateAllowlist(PoolId id, bytes32 root, bytes32 evidenceHash, AllowlistStats calldata stats) external {
         Launch storage l = _launches[id];
         if (!l.configured) revert NotConfigured();
@@ -222,47 +256,71 @@ contract KinHook is BaseHook {
         l.root = root;
         l.evidenceHash = evidenceHash;
         l.stats = stats;
-        emit AllowlistUpdated(id, root, evidenceHash, stats);
+        uint64 earliest = uint64(block.timestamp) + minReviewPeriod;
+        if (l.windowStart < earliest) {
+            uint64 shift = earliest - l.windowStart;
+            l.windowStart = earliest;
+            l.windowEnd += shift;
+        }
+        emit AllowlistUpdated(id, root, evidenceHash, stats, l.windowStart, l.windowEnd);
     }
 
     // ---------------------------------------------------------------------
     // Swap gate
     // ---------------------------------------------------------------------
 
-    function _beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
+    /// @dev Gate: closed before the window; during it, KinRouter-only exact-input buys.
+    function _beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         internal
+        view
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        PoolId id = key.toId();
-        Launch storage l = _launches[id];
+        Launch storage l = _launches[key.toId()];
         if (!l.configured) revert NotConfigured();
         if (block.timestamp < l.windowStart) revert WindowNotOpen(l.windowStart);
-        if (block.timestamp < l.windowEnd) _windowBuy(id, l, sender, params, hookData);
+        if (block.timestamp < l.windowEnd) {
+            if (sender != kinRouter) revert UntrustedRouter();
+            if (params.zeroForOne != l.buyIsZeroForOne) revert SellsLockedDuringWindow();
+            if (params.amountSpecified >= 0) revert ExactInputOnly();
+        }
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    function _windowBuy(
-        PoolId id,
-        Launch storage l,
-        address sender,
-        SwapParams calldata params,
-        bytes calldata hookData
-    ) internal {
-        if (sender != kinRouter) revert UntrustedRouter();
-        if (params.zeroForOne != l.buyIsZeroForOne) revert SellsLockedDuringWindow();
-        if (params.amountSpecified >= 0) revert ExactInputOnly();
+    /// @dev Accounting: during the window, charge the entity what the swap actually paid (a partial fill
+    ///      at the end of the curve pays less than it asked for). Reverting here reverts the swap.
+    function _afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata hookData)
+        internal
+        override
+        returns (bytes4, int128)
+    {
+        PoolId id = key.toId();
+        Launch storage l = _launches[id];
+        if (block.timestamp < l.windowEnd) {
+            int128 inDelta = params.zeroForOne ? delta.amount0() : delta.amount1();
+            _windowBuy(id, l.root, uint256(uint128(-inDelta)), hookData);
+        }
+        return (this.afterSwap.selector, 0);
+    }
 
-        (address buyer, bytes32 entityId, uint256 entityCap) = _verifyLeaf(l.root, hookData);
-        uint256 amountIn = uint256(-params.amountSpecified);
+    function _windowBuy(PoolId id, bytes32 root, uint256 paid, bytes calldata hookData) internal {
+        (address buyer, bytes32 entityId, uint256 entityCap) = _verifyLeaf(root, hookData);
 
-        uint256 prevEntity = entitySpent[id][entityId];
-        uint256 spent = prevEntity + amountIn;
+        // The first buy of an entity pins its cap; every later leaf for that entity must prove the same cap.
+        EntityState storage e = _entities[id][entityId];
+        uint256 prevEntity = e.spent;
+        if (prevEntity == 0 && e.cap == 0) {
+            if (entityCap > type(uint128).max) revert InvalidConfig();
+            e.cap = uint128(entityCap);
+        } else if (e.cap != entityCap) {
+            revert EntityCapMismatch(entityId, e.cap, entityCap);
+        }
+        uint256 spent = prevEntity + paid;
         if (spent > entityCap) revert EntityCapExceeded(entityId, entityCap, spent);
-        entitySpent[id][entityId] = spent;
+        e.spent = uint128(spent);
 
-        _recordStats(id, buyer, entityId, amountIn, prevEntity == 0, spent);
-        emit WindowBuy(id, entityId, buyer, amountIn, spent);
+        _recordStats(id, buyer, entityId, paid, prevEntity == 0, spent);
+        emit WindowBuy(id, entityId, buyer, paid, spent);
     }
 
     function _verifyLeaf(bytes32 root, bytes calldata hookData)
@@ -300,13 +358,14 @@ contract KinHook is BaseHook {
     // Fairness Receipt
     // ---------------------------------------------------------------------
 
-    /// @notice Anyone can freeze the receipt once the window has ended.
+    /// @notice Optional: emits the final receipt as an event once the window has ended (anyone may call).
+    ///         The receipt is final at windowEnd whether or not this is called.
     function finalize(PoolId id) external {
         Launch storage l = _launches[id];
         if (!l.configured) revert NotConfigured();
         if (block.timestamp < l.windowEnd) revert WindowNotEnded();
-        if (finalizedAt[id] != 0) revert AlreadyFinalized();
-        finalizedAt[id] = uint64(block.timestamp);
+        if (receiptEmitted[id]) revert AlreadyFinalized();
+        receiptEmitted[id] = true;
 
         Receipt memory r = getReceipt(id);
         emit ReceiptFinalized(
@@ -330,6 +389,11 @@ contract KinHook is BaseHook {
         return _launches[id];
     }
 
+    /// @notice What an entity has spent in the window (quote currency actually paid).
+    function entitySpent(PoolId id, bytes32 entityId) external view returns (uint256) {
+        return _entities[id][entityId].spent;
+    }
+
     function getWindowStats(PoolId id) external view returns (WindowStats memory) {
         return _windowStats[id];
     }
@@ -346,12 +410,14 @@ contract KinHook is BaseHook {
 
     function getReceipt(PoolId id) public view returns (Receipt memory r) {
         Launch storage l = _launches[id];
-        r.finalized = finalizedAt[id] != 0;
-        r.finalizedAt = finalizedAt[id];
+        r.finalized = l.configured && block.timestamp >= l.windowEnd;
+        r.finalizedAt = r.finalized ? l.windowEnd : 0;
         r.root = l.root;
         r.evidenceHash = l.evidenceHash;
         r.window = _windowStats[id];
         r.allowlist = l.stats;
+        r.totalSupply = l.totalSupply;
+        r.creatorAllocation = l.creatorAllocation;
         if (r.window.totalVolume > 0) {
             r.largestEntityShareBps = (r.window.largestEntitySpend * 10_000) / r.window.totalVolume;
         }

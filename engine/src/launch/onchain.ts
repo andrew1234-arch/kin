@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   createPublicClient,
   createWalletClient,
@@ -14,6 +15,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { kinHookAbi, kinLaunchFactoryAbi } from "../abi/kin";
 import { chainFor } from "../sandbox/relayer";
 import type { LaunchService } from "./service";
+import { launchParams } from "../launchParams";
+import { dataDir } from "../paths";
 
 /** Launch-side onchain actions, shared by the admin CLI and the local seeding script. */
 export function adminClients(opts: { rpcUrl: string; chainId: number; adminKey: Hex; deploymentPath: string }) {
@@ -43,12 +46,7 @@ export async function deployLaunch(svc: LaunchService, slug: string, c: Clients)
       {
         name: rec.name,
         symbol: rec.symbol,
-        totalSupply: 1_000_000_000n * 10n ** 18n,
-        creatorAllocation: 0n,
-        fee: 10_000,
-        tickSpacing: 200,
-        startTick: 184_200,
-        tickLower: 69_000,
+        ...launchParams(),
         root: rec.allowlist.root,
         evidenceHash: rec.allowlist.evidenceHash,
         stats: rec.allowlist.stats,
@@ -66,7 +64,7 @@ export async function deployLaunch(svc: LaunchService, slug: string, c: Clients)
   if (rcpt.status !== "success") throw new Error(`createLaunch reverted: ${hash}`);
   const [ev] = parseEventLogs({ abi: kinLaunchFactoryAbi, logs: rcpt.logs, eventName: "LaunchCreated" });
   const k = ev!.args.key;
-  return svc.attachOnchain(slug, {
+  const onchain = svc.attachOnchain(slug, {
     poolId: ev!.args.id as Hex,
     key: { currency0: k.currency0, currency1: k.currency1, fee: k.fee, tickSpacing: k.tickSpacing, hooks: k.hooks },
     token: ev!.args.token,
@@ -76,6 +74,22 @@ export async function deployLaunch(svc: LaunchService, slug: string, c: Clients)
     lockDuration: rec.window.lockSec,
     rootVersion: rec.allowlist.version,
   }).onchain!;
+  await publishMirror(svc, slug);
+  return onchain;
+}
+
+/**
+ * Write DATA_DIR/publish/<slug>.json: the public launch record plus every allowlist entry with its proof, for the
+ * version that is onchain. Pin or host it anywhere static (IPFS, a bucket) and point the web app's
+ * NEXT_PUBLIC_LAUNCH_MIRROR at it, so buyers can still get their proofs if this engine is down during the window.
+ */
+export async function publishMirror(svc: LaunchService, slug: string) {
+  const dir = join(dataDir(), "publish");
+  mkdirSync(dir, { recursive: true });
+  const body = { schema: "kin-launch-mirror/1", launch: svc.publicView(svc.get(slug)), entries: await svc.entries(slug) };
+  const path = join(dir, `${slug}.json`);
+  writeFileSync(path, JSON.stringify(body));
+  return path;
 }
 
 export async function updateRoot(svc: LaunchService, slug: string, c: Clients) {
@@ -92,10 +106,19 @@ export async function updateRoot(svc: LaunchService, slug: string, c: Clients) {
   });
   const rcpt = await c.pub.waitForTransactionReceipt({ hash });
   if (rcpt.status !== "success") throw new Error(`updateAllowlist reverted: ${hash}`);
-  svc.attachOnchain(slug, { ...rec.onchain, rootVersion: rec.allowlist.version });
+  // A late root change pushes the window back (the hook keeps a minimum review period): record where it is now.
+  const l = await c.pub.readContract({ address: c.hook, abi: kinHookAbi, functionName: "getLaunch", args: [rec.onchain.poolId] });
+  svc.attachOnchain(slug, {
+    ...rec.onchain,
+    rootVersion: rec.allowlist.version,
+    windowStart: Number(l.windowStart),
+    windowEnd: Number(l.windowEnd),
+  });
+  await publishMirror(svc, slug);
   return hash;
 }
 
+/** Optional: emits the receipt event. The receipt is final at windowEnd without it. */
 export async function finalizeLaunch(svc: LaunchService, slug: string, c: Clients) {
   const rec = svc.get(slug);
   if (!rec.onchain) throw new Error("not deployed");

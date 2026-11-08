@@ -39,6 +39,8 @@ const opts: ScanOptions = {
   maxScanBlocks: 43_200n,
   maxHops: 2,
   freshMaxNonce: 0,
+  freshMaxAgeHours: 168,
+  fundingTokens: [],
   caps: { capWei: parseEther("0.1"), freshPoolCapWei: parseEther("0.2") },
   excluded: new Set(),
   exclusionsSource: { repo: "x", commit: "y", count: 1, extra: [] },

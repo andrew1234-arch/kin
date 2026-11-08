@@ -174,7 +174,7 @@ function ScanView({ r }: { r: ScanResult }) {
         <ul className="small muted">
           <li>Early buyers: the first {r.method.earlyBuyers} wallets that received the token in a transaction they sent themselves, excluding the token&apos;s creation transaction.</li>
           <li>Links: two wallets share a native-ETH funder within {r.method.maxHops} hops in the {r.method.fundingWindowHours} hours before their first buy. Labelled exchange, bridge and router addresses never link.</li>
-          <li>Tiers as Kin would assign them: linked wallets share one {capEth} ETH cap; unlinked wallets with no prior transactions share one {freshEth} ETH fresh-pool cap; other wallets get their own {capEth} ETH cap.</li>
+          <li>Tiers as Kin would assign them: linked wallets share one {capEth} ETH cap; new unlinked wallets (no prior transactions, or first funded shortly before buying) split one {freshEth} ETH fresh pool evenly; other wallets get their own {capEth} ETH cap.</li>
           <li>Counterfactual: the observed buys replayed in chain order; a buy is rejected if it would take its entity past the cap. Buys paid in a token rather than ETH are not counted ({s.kin.unknownBuys} here).</li>
           <li>
             Cost of this scan: {r.cost.totalCalls} requests, {(r.cost.elapsedMs / 1000).toFixed(1)} s.

@@ -9,6 +9,7 @@ COPY engine/src ./src
 COPY engine/data/exclusions.json ./data/exclusions.json
 COPY engine/replay ./replay
 COPY contracts/deployments /app/contracts/deployments
+COPY contracts/launch-params.json /app/contracts/launch-params.json
 ENV PORT=8787 DATA_DIR=/data
 EXPOSE 8787
 CMD ["bun", "run", "src/server.ts"]

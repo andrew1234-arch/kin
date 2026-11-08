@@ -1,9 +1,10 @@
 import { getAddress, type Address, type Hex } from "viem";
 import { hex, Rpc } from "./rpc";
+import { TRANSFER_TOPIC } from "../scan/earlyBuyers";
 import { ConfigError, envRequired, envStr } from "../env";
 
 /**
- * Transfer-history access: "who sent native ETH to this address, up to block X?".
+ * Transfer-history access: "who sent native ETH (or a funding ERC-20 such as WETH) to this address, up to block X?".
  * Plain JSON-RPC cannot answer that (incoming value transfers are not indexed), so a
  * transfer-history API is required. Which provider, and its cost, is what Gate A measures.
  *
@@ -17,14 +18,23 @@ export interface IncomingTransfer {
   txHash: Hex;
   blockNumber: bigint;
   timestamp: number;
-  value: bigint; // wei
+  value: bigint; // wei, or token base units when `asset` is set
   internal: boolean;
+  /** The ERC-20 contract, for token transfers; undefined for native ETH. */
+  asset?: Address;
 }
+
+export type Order = "asc" | "desc";
 
 export interface HistoryProvider {
   readonly name: string;
-  /** Incoming native-ETH transfers to `address` in [fromBlock, toBlock], newest first, at most `limit`. */
-  incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number): Promise<IncomingTransfer[]>;
+  /**
+   * Incoming native-ETH transfers to `address` in [fromBlock, toBlock], at most `limit`: newest first ("desc",
+   * the default) or oldest first ("asc", used to find a wallet's first funding).
+   */
+  incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number, order?: Order): Promise<IncomingTransfer[]>;
+  /** Incoming transfers of the given ERC-20 `tokens` to `address` in [fromBlock, toBlock], newest first. */
+  incomingTokens(address: Address, tokens: Address[], fromBlock: bigint, toBlock: bigint, limit: number): Promise<IncomingTransfer[]>;
   calls(): Map<string, number>;
 }
 
@@ -35,13 +45,30 @@ export class AlchemyHistory implements HistoryProvider {
   calls() {
     return this.rpc.calls;
   }
-  async incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number) {
+  incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number, order: Order = "desc") {
+    return this.transfers(address, fromBlock, toBlock, limit, order, ["external", "internal"]);
+  }
+
+  incomingTokens(address: Address, tokens: Address[], fromBlock: bigint, toBlock: bigint, limit: number) {
+    if (tokens.length === 0) return Promise.resolve([]);
+    return this.transfers(address, fromBlock, toBlock, limit, "desc", ["erc20"], tokens);
+  }
+
+  private async transfers(
+    address: Address,
+    fromBlock: bigint,
+    toBlock: bigint,
+    limit: number,
+    order: Order,
+    category: string[],
+    contractAddresses?: Address[],
+  ) {
     type T = {
       blockNum: string;
       hash: Hex;
       from: string;
       to: string;
-      rawContract?: { value?: string | null };
+      rawContract?: { value?: string | null; address?: string | null };
       category: string;
       metadata?: { blockTimestamp?: string };
     };
@@ -50,8 +77,9 @@ export class AlchemyHistory implements HistoryProvider {
         fromBlock: hex(fromBlock),
         toBlock: hex(toBlock),
         toAddress: address,
-        category: ["external", "internal"],
-        order: "desc",
+        category,
+        ...(contractAddresses ? { contractAddresses } : {}),
+        order,
         withMetadata: true,
         excludeZeroValue: true,
         maxCount: hex(limit),
@@ -65,6 +93,7 @@ export class AlchemyHistory implements HistoryProvider {
       timestamp: t.metadata?.blockTimestamp ? Math.floor(Date.parse(t.metadata.blockTimestamp) / 1000) : 0,
       value: t.rawContract?.value ? BigInt(t.rawContract.value) : 0n,
       internal: t.category === "internal",
+      ...(t.category === "erc20" && t.rawContract?.address ? { asset: getAddress(t.rawContract.address) } : {}),
     }));
   }
 }
@@ -89,7 +118,12 @@ export class BlockscoutHistory implements HistoryProvider {
     }
   }
 
-  async incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number) {
+  /**
+   * Blockscout lists newest first. For "asc" this reads up to 5 pages per kind and keeps the oldest seen, so for
+   * a wallet with more history than that the "first" funding found is later than the true one: the wallet can
+   * look younger (fresh) than it is, never older. To be checked on the first live run.
+   */
+  async incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number, order: Order = "desc") {
     type Item = {
       hash?: Hex;
       transaction_hash?: Hex;
@@ -103,7 +137,7 @@ export class BlockscoutHistory implements HistoryProvider {
     const out: IncomingTransfer[] = [];
     for (const [kind, internal] of [["transactions", false], ["internal-transactions", true]] as const) {
       let next = "";
-      for (let page = 0; page < 5 && out.length < limit * 2; page++) {
+      for (let page = 0; page < 5 && (order === "asc" || out.length < limit * 2); page++) {
         const body = await this.get<{ items: Item[]; next_page_params: Record<string, string> | null }>(
           `/addresses/${address}/${kind}?filter=to${next}`,
         );
@@ -128,6 +162,41 @@ export class BlockscoutHistory implements HistoryProvider {
         }
         if (older || !body.next_page_params) break;
         next = "&" + new URLSearchParams(body.next_page_params).toString();
+      }
+    }
+    const sorted = out.sort((a, b) => Number(b.blockNumber - a.blockNumber));
+    return order === "asc" ? sorted.reverse().slice(0, limit) : sorted.slice(0, limit);
+  }
+
+  async incomingTokens(address: Address, tokens: Address[], fromBlock: bigint, toBlock: bigint, limit: number) {
+    type Item = {
+      transaction_hash?: Hex;
+      tx_hash?: Hex;
+      from: { hash: string };
+      to: { hash: string } | null;
+      total?: { value?: string };
+      block_number?: number;
+      timestamp: string;
+      token?: { address?: string; address_hash?: string };
+    };
+    const out: IncomingTransfer[] = [];
+    for (const token of tokens) {
+      const body = await this.get<{ items: Item[] }>(`/addresses/${address}/token-transfers?type=ERC-20&filter=to&token=${token}`);
+      for (const it of body.items) {
+        const bn = BigInt(it.block_number ?? 0);
+        const value = BigInt(it.total?.value ?? "0");
+        if (bn > toBlock || bn < fromBlock || value === 0n) continue;
+        if (!it.to || it.to.hash.toLowerCase() !== address.toLowerCase()) continue;
+        out.push({
+          from: getAddress(it.from.hash),
+          to: getAddress(it.to.hash),
+          txHash: (it.transaction_hash ?? it.tx_hash)!,
+          blockNumber: bn,
+          timestamp: Math.floor(Date.parse(it.timestamp) / 1000),
+          value,
+          internal: false,
+          asset: getAddress(token),
+        });
       }
     }
     return out.sort((a, b) => Number(b.blockNumber - a.blockNumber)).slice(0, limit);
@@ -159,10 +228,16 @@ export class RpcScanHistory implements HistoryProvider {
   calls() {
     return this.rpc.calls;
   }
-  async incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number) {
+  async incomingNative(address: Address, fromBlock: bigint, toBlock: bigint, limit: number, order: Order = "desc") {
     type Tx = { hash: Hex; from: string; to: string | null; value: Hex };
     const out: IncomingTransfer[] = [];
-    for (let b = toBlock; b >= (fromBlock < 0n ? 0n : fromBlock) && out.length < limit; b--) {
+    const lo = fromBlock < 0n ? 0n : fromBlock;
+    const blocks = function* () {
+      if (order === "asc") for (let b = lo; b <= toBlock; b++) yield b;
+      else for (let b = toBlock; b >= lo; b--) yield b;
+    };
+    for (const b of blocks()) {
+      if (out.length >= limit) break;
       const blk = await this.rpc.call<{ timestamp: Hex; transactions: Tx[] }>("eth_getBlockByNumber", [hex(b), true]);
       for (const t of blk.transactions) {
         if (!t.to || t.to.toLowerCase() !== address.toLowerCase() || BigInt(t.value) === 0n) continue;
@@ -177,6 +252,38 @@ export class RpcScanHistory implements HistoryProvider {
         });
       }
     }
+    return out.slice(0, limit);
+  }
+
+  async incomingTokens(address: Address, tokens: Address[], fromBlock: bigint, toBlock: bigint, limit: number) {
+    if (tokens.length === 0) return [];
+    type Log = { address: string; topics: Hex[]; data: Hex; transactionHash: Hex; blockNumber: Hex };
+    const logs = await this.rpc.call<Log[]>("eth_getLogs", [
+      {
+        address: tokens,
+        fromBlock: hex(fromBlock < 0n ? 0n : fromBlock),
+        toBlock: hex(toBlock),
+        topics: [TRANSFER_TOPIC, null, pad(address)],
+      },
+    ]);
+    const out: IncomingTransfer[] = [];
+    for (const l of logs.reverse().slice(0, limit)) {
+      const value = BigInt(l.data);
+      if (value === 0n) continue;
+      const blk = await this.rpc.call<{ timestamp: Hex }>("eth_getBlockByNumber", [l.blockNumber, false]);
+      out.push({
+        from: getAddress(`0x${l.topics[1]!.slice(26)}`),
+        to: getAddress(address),
+        txHash: l.transactionHash,
+        blockNumber: BigInt(l.blockNumber),
+        timestamp: Number(BigInt(blk.timestamp)),
+        value,
+        internal: false,
+        asset: getAddress(l.address),
+      });
+    }
     return out;
   }
 }
+
+const pad = (a: Address): Hex => `0x${a.slice(2).toLowerCase().padStart(64, "0")}`;

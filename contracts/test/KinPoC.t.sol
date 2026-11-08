@@ -32,8 +32,8 @@ contract KinPoCTest is KinFixture {
 
     function test_BundleOf20CollapsesIntoOneCap() public {
         // Plain comparison pool: same token parameters, no hook.
-        (, address plainToken) = factory.createLaunch(_params("Plain Demo", "PLN", bytes32("plain")), true);
-        PoolKey memory plainKey = factory.launchKey(1);
+        (, address plainToken) = plainFactory.createLaunch(_params("Plain Demo", "PLN", bytes32("plain")), true);
+        PoolKey memory plainKey = plainFactory.launchKey(0);
         assertEq(address(plainKey.hooks), address(0));
         assertEq(Currency.unwrap(plainKey.currency1), plainToken);
 
@@ -52,7 +52,7 @@ contract KinPoCTest is KinFixture {
         assertEq(hook.entitySpent(kinId, BUNDLE), CAP);
 
         // The 11th bundle buy fails specifically with EntityCapExceeded.
-        _expectHookRevert(abi.encodeWithSelector(KinHook.EntityCapExceeded.selector, BUNDLE, CAP, CAP + PER_WALLET));
+        _expectAfterSwapRevert(abi.encodeWithSelector(KinHook.EntityCapExceeded.selector, BUNDLE, CAP, CAP + PER_WALLET));
         _buy(bundle[10], PER_WALLET);
     }
 
@@ -73,7 +73,7 @@ contract KinPoCTest is KinFixture {
         vm.deal(stranger, 1 ether);
         KinRouter.Allowance memory fake =
             KinRouter.Allowance({entityId: keccak256("entity:stranger"), entityCap: CAP, proof: new bytes32[](0)});
-        _expectHookRevert(abi.encodeWithSelector(KinHook.NotOnAllowlist.selector));
+        _expectAfterSwapRevert(abi.encodeWithSelector(KinHook.NotOnAllowlist.selector));
         _buy(stranger, kinKey, 0.1 ether, fake);
     }
 
@@ -81,7 +81,7 @@ contract KinPoCTest is KinFixture {
         _openWindow();
         // Bundle wallet presents Alice's entity, cap and proof: the leaf binds the wallet, so it fails.
         KinRouter.Allowance memory borrowed = _allowance(alice);
-        _expectHookRevert(abi.encodeWithSelector(KinHook.NotOnAllowlist.selector));
+        _expectAfterSwapRevert(abi.encodeWithSelector(KinHook.NotOnAllowlist.selector));
         _buy(bundle[0], kinKey, 0.1 ether, borrowed);
     }
 

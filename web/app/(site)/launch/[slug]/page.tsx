@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { keccak256, parseEther, toBytes, type Hex } from "viem";
-import { useAccount, useChainId, useReadContract, useSignMessage, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useChainId, usePublicClient, useReadContract, useSignMessage, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { Notice, Stat, Tx } from "@/components/bits";
 import { kinHookAbi, kinRouterAbi, kinVaultAbi } from "@/lib/abi";
-import { api, ApiError, post } from "@/lib/api";
-import { API_URL, DEPLOYMENT, LAUNCH_CHAIN_ID, LAUNCH_EXPLORER } from "@/lib/config";
+import { api, ApiError, launchMirror, post, walletFromMirror } from "@/lib/api";
+import { API_URL, DEPLOYMENT, LAUNCH_CHAIN_ID, LAUNCH_EXPLORER, SLIPPAGE_BPS } from "@/lib/config";
 import { duration, eth, tokens } from "@/lib/format";
 import { phaseOf, type LaunchView, type Phase, type WalletStatus } from "@/lib/types";
 
@@ -24,10 +24,23 @@ export default function LaunchPage() {
   const { slug } = useParams<{ slug: string }>();
   const [launch, setLaunch] = useState<LaunchView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fromMirror, setFromMirror] = useState(false);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
   const load = useCallback(() => {
-    api<LaunchView>(`/launches/${slug}`).then(setLaunch).catch((e: ApiError) => setError(e.message));
+    api<LaunchView>(`/launches/${slug}`)
+      .then((l) => {
+        setLaunch(l);
+        setFromMirror(false);
+      })
+      .catch(async (e: ApiError) => {
+        // Engine unreachable: fall back to the published static copy, so buyers still get their proofs.
+        const m = e.status >= 500 ? await launchMirror(slug) : null;
+        if (m) {
+          setLaunch(m.launch);
+          setFromMirror(true);
+        } else setError(e.message);
+      });
   }, [slug]);
   useEffect(() => {
     load();
@@ -65,11 +78,14 @@ export default function LaunchPage() {
         ))}
       </div>
       <PhaseLine launch={launch} phase={phase} now={now} />
+      {fromMirror && (
+        <Notice tone="warn">The Kin engine is unreachable; showing the launch&apos;s published copy. Buying and claiming still work.</Notice>
+      )}
 
       <div className="stats">
         <Stat label="wallets registered" value={launch.registrations} />
         <Stat label="cap per entity" value={`${eth(launch.tiers.capWei)} ETH`} sub="linked wallets share one" />
-        <Stat label="fresh-wallet pool" value={`${eth(launch.tiers.freshPoolCapWei)} ETH`} sub="shared by all fresh wallets" />
+        <Stat label="fresh-wallet pool" value={`${eth(launch.tiers.freshPoolCapWei)} ETH`} sub="split evenly between fresh wallets" />
         {launch.baseVerify && BigInt(launch.tiers.verifiedCapWei) > BigInt(launch.tiers.capWei) && (
           <Stat
             label="verified-human cap"
@@ -123,7 +139,9 @@ function YourWallet({ launch, phase, now, onChange }: { launch: LaunchView; phas
 
   const refresh = useCallback(() => {
     if (!address) return setStatus(null);
-    api<WalletStatus>(`/launches/${launch.slug}/wallets/${address}`).then(setStatus).catch(() => setStatus(null));
+    api<WalletStatus>(`/launches/${launch.slug}/wallets/${address}`)
+      .then(setStatus)
+      .catch(async () => setStatus(await walletFromMirror(launch.slug, address)));
   }, [address, launch.slug]);
   useEffect(refresh, [refresh, launch.allowlist?.version]);
 
@@ -174,7 +192,7 @@ function YourWallet({ launch, phase, now, onChange }: { launch: LaunchView; phas
             {e.tier === "linked" && <span className="small muted">You share one cap with {status.entityMembers! - 1} other wallet(s) funded from the same source.</span>}
             {e.tier === "fresh" && (
               <span className="small muted">
-                {status.entityMembers! > 1 ? `All ${status.entityMembers} fresh wallets share one cap.` : "Fresh wallets share one pooled cap."}
+                New wallets split the {eth(launch.tiers.freshPoolCapWei)} ETH fresh pool evenly; this is your share.
               </span>
             )}
             {e.tier === "aged" && <span className="small muted">Your own entity and your own cap.</span>}
@@ -263,6 +281,7 @@ function VerifyHuman({ slug, capWei, onVerified }: { slug: string; capWei: strin
 
 function Onchain({ launch, phase, now, entityId, cap, proof }: { launch: LaunchView; phase: Phase; now: number; entityId: Hex; cap: bigint; proof: Hex[] }) {
   const { address } = useAccount();
+  const client = usePublicClient();
   const o = launch.onchain!;
   const spent = useReadContract({
     address: DEPLOYMENT?.kinHook,
@@ -298,11 +317,24 @@ function Onchain({ launch, phase, now, entityId, cap, proof }: { launch: LaunchV
     try {
       const wei = parseEther(amount);
       if (wei <= 0n || wei > remaining) throw new Error(`Enter up to ${eth(remaining)} ETH`);
+      if (!client || !address) throw new Error("Wallet not ready");
+      const allowance = { entityId, entityCap: cap, proof };
+      // Quote the output now and require at least (1 - slippage) of it, so buys landing ahead in the same block
+      // can't silently shrink this one.
+      const { result: quoted } = await client.simulateContract({
+        address: DEPLOYMENT!.kinRouter,
+        abi: kinRouterAbi,
+        functionName: "swapExactIn",
+        args: [o.key, true, wei, 0n, allowance, BigInt(o.windowEnd)],
+        value: wei,
+        account: address,
+      });
+      const minOut = (quoted * BigInt(10_000 - SLIPPAGE_BPS)) / 10_000n;
       await writeContractAsync({
         address: DEPLOYMENT!.kinRouter,
         abi: kinRouterAbi,
         functionName: "swapExactIn",
-        args: [o.key, true, wei, 0n, { entityId, entityCap: cap, proof }, BigInt(o.windowEnd)],
+        args: [o.key, true, wei, minOut, allowance, BigInt(o.windowEnd)],
         value: wei,
       });
     } catch (e) {
@@ -339,7 +371,12 @@ function Onchain({ launch, phase, now, entityId, cap, proof }: { launch: LaunchV
           </button>
         </div>
       )}
-      {phase === "window" && <p className="small faint" style={{ marginTop: 8 }}>Tokens go to the vault and unlock {duration(unlockAt - now)} from now.</p>}
+      {phase === "window" && (
+        <p className="small faint" style={{ marginTop: 8 }}>
+          Tokens go to the vault and unlock {duration(unlockAt - now)} from now. The buy reverts if it would get more than{" "}
+          {SLIPPAGE_BPS / 100}% fewer tokens than quoted.
+        </p>
+      )}
       {phase === "claimable" && ((owed.data as bigint | undefined) ?? 0n) > 0n && (
         <button className="btn" style={{ marginTop: 14 }} onClick={claim} disabled={isPending || receipt.isLoading}>
           Claim from the vault

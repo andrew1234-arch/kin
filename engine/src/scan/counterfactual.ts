@@ -9,8 +9,19 @@ import type { Address, Hex } from "viem";
 export interface KinCaps {
   /** Cap per linked entity and per aged, unlinked wallet (wei). */
   capWei: bigint;
-  /** One shared cap for all fresh, unlinked wallets together (wei). */
+  /** Total for all fresh, unlinked wallets together, split evenly between them (wei). */
   freshPoolCapWei: bigint;
+}
+
+/**
+ * Each fresh wallet's share of the fresh pool: the pool split evenly, never more than the normal cap. Splitting
+ * (instead of one first-come pool) means one actor with a few fresh wallets can't take the whole pool in the
+ * window's first block; it gets only its wallets' shares. Shared with the allowlist builder.
+ */
+export function freshShareWei(capWei: bigint, freshPoolCapWei: bigint, freshWallets: number): bigint {
+  if (freshWallets <= 0) return 0n;
+  const share = freshPoolCapWei / BigInt(freshWallets);
+  return share < capWei ? share : capWei;
 }
 
 export type SimTier = "linked" | "fresh" | "aged";
@@ -40,19 +51,19 @@ export interface EntityOutcome {
 
 export function simulateKin(
   buys: SimBuy[],
-  entityOf: (wallet: Address) => { key: string; tier: SimTier },
+  entityOf: (wallet: Address) => { key: string; tier: SimTier; capWei?: bigint },
   caps: KinCaps,
 ) {
   const ordered = [...buys].sort((a, b) => (a.block === b.block ? a.logIndex - b.logIndex : a.block < b.block ? -1 : 1));
   const out = new Map<string, EntityOutcome>();
   for (const b of ordered) {
-    const { key, tier } = entityOf(b.wallet);
+    const { key, tier, capWei } = entityOf(b.wallet);
     let o = out.get(key);
     if (!o) {
       o = {
         key,
         tier,
-        capWei: tier === "fresh" ? caps.freshPoolCapWei : caps.capWei,
+        capWei: capWei ?? (tier === "fresh" ? caps.freshPoolCapWei : caps.capWei),
         attemptedWei: 0n,
         landedWei: 0n,
         blockedWei: 0n,

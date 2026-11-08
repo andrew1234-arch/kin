@@ -19,7 +19,8 @@ cast rpc --rpc-url "$RPC" anvil_setBalance "$DEPLOYER" 0x56BC75E2D63100000 >/dev
 
 cd "$ROOT/contracts"
 forge script script/DeployKin.s.sol --rpc-url "$RPC" --broadcast --slow >/dev/null
-forge script script/LocalScanFixture.s.sol --rpc-url "$RPC" --broadcast --slow >/dev/null
+forge script script/LocalScanFixture.s.sol:LocalScanFixture --rpc-url "$RPC" --broadcast --slow >/dev/null
+forge script script/LocalScanFixture.s.sol:LocalScanFixtureBuys --rpc-url "$RPC" --broadcast --slow >/dev/null
 TOKEN=$(jq -r .token deployments/31337-scan-fixture.json)
 jq . deployments/31337-scan-fixture.json
 

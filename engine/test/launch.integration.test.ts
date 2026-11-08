@@ -88,15 +88,20 @@ describe("LaunchService on a local chain", () => {
 
     const v1 = await svc.build(slug);
     expect(v1.version).toBe(1);
-    expect(v1.stats).toEqual({ allowlistedWallets: 6, entities: 3, linkedWallets: 3, freshWallets: 2 });
-    const ev1 = JSON.parse(svc.evidence(slug));
+    // Building closed registration: a late wallet is refused instead of told "registered".
+    const late = acct();
+    await expect(
+      svc.register(slug, late.address, await late.signMessage({ message: registrationMessage(slug, late.address, 31337) })),
+    ).rejects.toThrow("registration is closed");
+    expect(v1.stats).toEqual({ allowlistedWallets: 6, entities: 4, linkedWallets: 3, freshWallets: 2 });
+    const ev1 = JSON.parse(await svc.evidence(slug));
     const linkedEntity = ev1.entities.find((e: { tier: string }) => e.tier === "linked");
     expect(linkedEntity.links.length).toBe(2);
     for (const l of linkedEntity.links) expect(l.txHashes.length).toBe(2);
 
     // Every proof verifies against the root.
     for (const a of all) {
-      const e = svc.proof(slug, a.address);
+      const e = await svc.proof(slug, a.address);
       expect(StandardMerkleTree.verify(v1.root, [...LEAF_ENCODING], [e.wallet, e.entityId, e.cap], e.proof)).toBe(true);
     }
 
@@ -111,9 +116,9 @@ describe("LaunchService on a local chain", () => {
     expect(v2.version).toBe(2);
     expect(v2.root).not.toBe(v1.root);
     // The two remaining linked wallets still share a funder; linked[0] is now a fresh wallet.
-    expect(v2.stats).toEqual({ allowlistedWallets: 6, entities: 3, linkedWallets: 2, freshWallets: 3 });
-    expect(svc.proof(slug, linked[0]!.address).tier).toBe("fresh");
-    const ev2 = JSON.parse(svc.evidence(slug));
+    expect(v2.stats).toEqual({ allowlistedWallets: 6, entities: 5, linkedWallets: 2, freshWallets: 3 });
+    expect((await svc.proof(slug, linked[0]!.address)).tier).toBe("fresh");
+    const ev2 = JSON.parse(await svc.evidence(slug));
     expect(ev2.method.overrides[0].wallet).toBe(linked[0]!.address);
 
     // Once the window has started, the allowlist is frozen.
@@ -130,4 +135,38 @@ describe("LaunchService on a local chain", () => {
     await expect(svc.build(slug)).rejects.toThrow("frozen");
     await expect(svc.dispute(slug, linked[1]!.address, "too late", dsig)).rejects.toThrow("window starts");
   }, 60_000);
+});
+
+describe("LaunchService concurrency", () => {
+  const svcWith = (store: LaunchStore) =>
+    new LaunchService({
+      store,
+      verify: async () => {
+        await Bun.sleep(5); // a real signature check also awaits
+        return true;
+      },
+      rpc: () => {
+        throw new Error("no chain needed");
+      },
+      history: () => {
+        throw new Error("no chain needed");
+      },
+      excluded: new Set(),
+      exclusionsSource: {},
+      fundingWindowHours: 0,
+    });
+  const tiers = { capWei: "1", freshPoolCapWei: "1", verifiedCapWei: "1", freshMaxNonce: 0 };
+
+  test("concurrent registrations are all kept, in one process and across two", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kin-race-"));
+    const a = svcWith(new LaunchStore(dir));
+    const b = svcWith(new LaunchStore(dir)); // a second store on the same files, like the admin CLI
+    a.create({ slug: "r", chainId: 1, name: "R", symbol: "R", registrationClosesAt: 9e9, tiers, window: { delayAfterBuildSec: 1, lengthSec: 1, lockSec: 1 } });
+    const wallets = Array.from({ length: 20 }, (_, i) => `0x${(i + 1).toString(16).padStart(40, "0")}`);
+    const results = await Promise.all(wallets.map((w, i) => (i % 2 ? a : b).register("r", w, "0x00")));
+    expect(results.every((r) => !r.alreadyRegistered)).toBe(true);
+    expect(a.get("r").registrations.length).toBe(20);
+    // Registrations are appended to their own log, not rewritten with the launch record.
+    expect(Object.keys(JSON.parse(require("node:fs").readFileSync(join(dir, "launches/r/launch.json"), "utf8")))).not.toContain("registrations");
+  });
 });

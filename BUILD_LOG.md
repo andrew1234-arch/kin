@@ -4,6 +4,77 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D4 — Sun 8 Nov 2026: architecture and system-design review
+
+Tool: AI coding agent. Prompt: run a max-level review of the contracts, the chain usage and the system design,
+report every finding, then apply them with minimal edits. 31 findings; 24 applied, 7 left as stated design limits.
+
+### Applied
+
+Contracts (41 tests pass):
+- **Hook limits** (`KinHook.Limits`, set at deploy, recorded in the deployment file): a minimum review period
+  between configuration (or any root change) and `windowStart` (a late `updateAllowlist` pushes the window back);
+  window length and lock length bounds; a maximum creator share of supply. Defaults on Base: 30 min review,
+  5 min to 24 h window, lock up to 7 days, creator up to 10%. On anvil: no review period.
+- **Accounting in AFTER_SWAP**: caps, entity spend and receipt volume use what the swap actually paid, so a partial
+  fill at the end of the curve no longer overstates spend. The hook address is mined for BEFORE_SWAP + AFTER_SWAP.
+- **Entity cap pinned by the first buy**: a later leaf for the same entity with a different cap reverts
+  (`EntityCapMismatch`). Spend and cap share one storage slot, so this costs no extra slot.
+- **Receipt**: final at `windowEnd` without a transaction (`finalize()` only emits the event); now includes
+  `totalSupply` and `creatorAllocation`.
+- **Factory**: token salt includes the block number (the pool can't be initialised first from an earlier block),
+  and a pool someone initialised first at the same price is tolerated; another price reverts `PoolPreInitialized`.
+  The creator can `collectFees` (the locked position's swap fees). Plain pools only come from a separate factory
+  deployed with no hook; the Kin factory refuses them.
+- Launch economics live in `contracts/launch-params.json`, read by the forge scripts and the engine.
+- Because the token address depends on the block, scripts no longer trust forge's simulated pool id: Gate B and
+  the local Scan fixture read the real pool from `factory.launchKey(index)`.
+
+Engine (49 tests pass):
+- **Lost updates fixed**: every change goes through `LaunchStore.update`, a locked read-modify-write (lock file, so
+  the server and the admin CLI can't overwrite each other). Registrations go to an append-only
+  `registrations.jsonl` instead of rewriting the whole launch file. Test: 20 concurrent registrations through two
+  stores on the same files are all kept (before: 10 concurrent registrations, 1 kept).
+- **Building closes registration**, so nobody is told "registered" for an allowlist they can't be on.
+- **Funding**: lookback is the wallet's whole history by default (`FUNDING_WINDOW_HOURS=0`), and each wallet's
+  oldest transfers are read as well as its newest. ERC-20 funding counts for configured tokens
+  (`FUNDING_TOKENS`, default Base WETH; `LAUNCH_FUNDING_TOKENS` for launches) when the sender is a wallet, not a
+  contract (pools and routers would link every swapper). Self-transfers are never funding.
+- **Freshness by age**: a wallet first funded less than `freshMaxAgeHours` (168 by default) before the snapshot is
+  fresh even if it has sent a transaction.
+- **Fresh pool split evenly** (each fresh wallet gets min(cap, pool / fresh wallets)) instead of first come, first
+  served, in both the allowlist and Kin Scan's counterfactual.
+- **Verified uplift only for single wallets**: a linked entity keeps the normal cap whoever in it is verified.
+- **EOA-only registration** by default (`LAUNCH_ALLOW_SMART_WALLETS=1` to accept ERC-1271/6492); the web app's
+  Coinbase connector is set to EOA only.
+- **Minimum balance to register** (`minBalanceWei`, admin CLI default 0.0005 ETH) so mass key registration costs money.
+- **Proofs follow the onchain root**: the engine reads `getLaunch(poolId).root` and serves the matching version.
+- **Rate limits** use the socket address unless `TRUST_PROXY=1`.
+- **Static mirror**: `deploy` / `update-root` / `admin.ts publish` write `DATA_DIR/publish/<slug>.json` (launch
+  + every proof); the web app falls back to it (`NEXT_PUBLIC_LAUNCH_MIRROR`) when the engine is unreachable.
+- The attack sandbox runs on its own deployment (no review period) so its window still opens in seconds.
+
+Web: window buys quote the output with a simulation and pass a minimum (`NEXT_PUBLIC_SLIPPAGE_BPS`, default 3%).
+The receipt shows the creator's share of supply.
+
+### Not applied (stated design limits)
+
+- **After the window**: trading is open with no caps. Kin protects the window's distribution, not the launch.
+- **Vault lock asymmetry**: window buyers are locked while post-window buyers and the creator are not.
+- **Trust in the launcher**: root, evidence and stats are the launcher's word, checkable offchain only.
+- **Order inside the window**: buys execute along the curve, so earlier buys get more tokens per ETH.
+- **Evidence privacy**: the public evidence file links a person's wallets.
+- **No pause or router migration**: the hook has no admin powers; adding them would make the trust problem worse.
+- Gas: the per-buyer counter is kept (it gives the receipt its distinct-wallet count); post-window swaps read one
+  packed slot.
+
+### Verified (local anvil)
+
+`gate-b-local.sh` (other router rejected, KinRouter buy vaulted), `sandbox-local.sh` (Kin pool 10/20, plain
+pool 20/20), `gate-a-local.sh` (5 early buyers, one 3-wallet entity), `dev-local.sh` (seeded launches).
+
+---
+
 ## D3 — Thu 5 Nov 2026: Base Verify tier
 
 **Tool:** AI coding agent. **Prompt:** "Continue the build". **Changed by hand:** nothing.

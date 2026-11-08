@@ -1,0 +1,9 @@
+{
+  "_comment": "Launch economics shared by the engine (launch/onchain.ts, sandbox/relayer.ts) and the forge scripts (GateB, LocalScanFixture). Product parameters, not facts about Base. Price: ~1e8 tokens per ETH at startTick, liquidity down to ~1e3 tokens per ETH at tickLower.",
+  "totalSupply": "1000000000000000000000000000",
+  "creatorAllocation": "0",
+  "fee": 10000,
+  "tickSpacing": 200,
+  "startTick": 184200,
+  "tickLower": 69000
+}

@@ -22,7 +22,7 @@ export GATE_B_DELAY_SECONDS=30
 echo "== deploy"
 forge script script/DeployKin.s.sol --rpc-url "$RPC" --broadcast --slow 2>&1 | grep -E "^  (chainId|PoolManager|KinRouter|KinHook|KinVault|Factory|OtherRouter)|Error" 
 echo "== create launch"
-forge script script/GateB.s.sol:GateBCreateLaunch --rpc-url "$RPC" --broadcast --slow 2>&1 | grep -E "launch index|token|window opens|Error"
+forge script script/GateB.s.sol:GateBCreateLaunch --rpc-url "$RPC" --broadcast --slow 2>&1 | grep -E "launch index|window opens|Error"
 
 echo "== advance time past windowStart"
 cast rpc --rpc-url "$RPC" evm_increaseTime 60 >/dev/null

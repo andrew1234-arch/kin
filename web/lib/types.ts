@@ -118,8 +118,9 @@ export interface LaunchView {
   symbol: string;
   createdAt: number;
   registrationClosesAt: number;
-  tiers: { capWei: string; freshPoolCapWei: string; verifiedCapWei: string; freshMaxNonce: number };
+  tiers: { capWei: string; freshPoolCapWei: string; verifiedCapWei: string; freshMaxNonce: number; freshMaxAgeHours?: number };
   window: { delayAfterBuildSec: number; lengthSec: number; lockSec: number };
+  minBalanceWei?: string | null;
   registrations: number;
   verifiedWallets?: number;
   /** Whether the engine has Base Verify enabled (the verified-human tier). */

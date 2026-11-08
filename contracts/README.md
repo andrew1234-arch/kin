@@ -5,16 +5,16 @@ Foundry project. Uniswap v4 (`lib/v4-periphery`, with v4-core nested) and OpenZe
 
 | Contract | Role |
 |---|---|
-| `KinHook` | BEFORE_SWAP-only v4 hook. Registration/dispute period → capped window → open trading. Merkle allowlist of `(wallet, entityId, entityCap)`, one shared cap per entity, `evidenceHash` commitment, root frozen at `windowStart`, Fairness Receipt via `finalize()`. |
+| `KinHook` | BEFORE_SWAP + AFTER_SWAP v4 hook. Registration/dispute period → capped window → open trading. Merkle allowlist of `(wallet, entityId, entityCap)`, one shared cap per entity (pinned by the entity's first buy), charged in what each swap actually paid. Deploy-time limits: minimum review period after every root change, window and lock bounds, creator share of supply. `evidenceHash` commitment, root frozen at `windowStart`, Fairness Receipt (final at `windowEnd`; `finalize()` only emits it). |
 | `KinRouter` | The only router the hook trusts in the window. Writes its own `msg.sender` into the hook data. Native ETH or ERC-20 input, exact-input only. Window buys are delivered to `KinVault`. |
 | `KinVault` | Holds window buys per buyer; `claim()` from `windowEnd + lockDuration`. Balances are not transferable. |
-| `KinLaunchFactory` | Fixed-supply token + native-ETH/token pool + one-sided liquidity (locked) + `configureLaunch`. `plain = true` makes the hookless comparison pool for the sandbox. |
+| `KinLaunchFactory` | Fixed-supply token + native-ETH/token pool + one-sided liquidity (locked; the creator can `collectFees`) + `configureLaunch`. Deployed with `hook = 0` it is the sandbox-only plain factory (hookless comparison pools); the Kin factory can't create plain pools. |
 
 ## Build and test
 
 ```bash
 git submodule update --init --recursive
-forge test            # 31 tests: the 8 PoC behaviours, the new acceptance tests, a 1000-run fuzz, the engine cross-check
+forge test            # 41 tests: the 8 PoC behaviours, acceptance and limit tests, a 1000-run fuzz, the engine cross-check
 ```
 
 `test/fixtures/engine-allowlist.json` is written by `engine/test/allowlist.test.ts`; `EngineFixture.t.sol`
@@ -33,8 +33,11 @@ Base Sepolia (needs a funded `DEPLOYER_PRIVATE_KEY` and `BASE_SEPOLIA_RPC_URL`, 
 ```bash
 source .env
 forge script script/DeployKin.s.sol --rpc-url base_sepolia --broadcast --slow          # writes deployments/84532.json
+# the sandbox's own deployment, whose hook has no minimum review period:
+KIN_DEPLOYMENT_NAME=sandbox KIN_MIN_REVIEW_SECONDS=0 KIN_MIN_WINDOW_SECONDS=60 \
+  forge script script/DeployKin.s.sol --rpc-url base_sepolia --broadcast --slow        # writes deployments/84532-sandbox.json
 forge script script/GateB.s.sol:GateBCreateLaunch --rpc-url base_sepolia --broadcast --slow
-# wait until the window opens (GATE_B_DELAY_SECONDS, default 90 s)
+# wait until the window opens (GATE_B_DELAY_SECONDS, default the hook's minimum review period + 30 s)
 forge script script/GateB.s.sol:GateBSwap --rpc-url base_sepolia --broadcast --slow
 ```
 
