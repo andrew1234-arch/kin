@@ -1,23 +1,27 @@
 /**
  * Launch admin CLI.
  *
- *   bun run src/launch/admin.ts create <slug> <name> <symbol> [capEth=0.01] [freshPoolCapEth=0.02] [registrationHours=24] [windowMin=30] [lockMin=60] [disputeMin=30] [verifiedCapEth=capEth]
+ *   bun run src/launch/admin.ts create <slug> <name> <symbol> [capEth=0.01] [freshPoolCapEth=0.02] [registrationHours=24] [windowMin=30] [lockMin=60] [disputeMin=30] [verifiedCapEth=capEth] [minBalanceEth=0.0005] [freshMaxAgeHours=168]
  *   bun run src/launch/admin.ts build <slug>
  *   bun run src/launch/admin.ts deploy <slug>          # factory.createLaunch with the built root; window opens after the dispute period
  *   bun run src/launch/admin.ts resolve <slug> <disputeId> accept|reject [unlink] [note...]
  *   bun run src/launch/admin.ts update-root <slug>     # after a rebuild, before windowStart
- *   bun run src/launch/admin.ts finalize <slug>        # after windowEnd (anyone may call)
+ *   bun run src/launch/admin.ts finalize <slug>        # optional, after windowEnd: emits the receipt event
+ *   bun run src/launch/admin.ts publish <slug>         # rewrite the static mirror (DATA_DIR/publish/<slug>.json)
+ *
+ * Building the allowlist closes registration. The hook enforces its deploy-time limits (minimum review period,
+ * window and lock bounds, creator share); `deploy` reverts if the launch's window settings break them.
  *
  * Env: LAUNCH_RPC_URL, LAUNCH_CHAIN_ID, LAUNCH_ADMIN_KEY, LAUNCH_DEPLOYMENT (contracts/deployments/<chainId>.json), DATA_DIR.
  */
 import { parseEther, type Hex } from "viem";
 import { launchRuntime } from "../runtime";
-import { adminClients, deployLaunch, finalizeLaunch, updateRoot } from "./onchain";
+import { adminClients, deployLaunch, finalizeLaunch, publishMirror, updateRoot } from "./onchain";
 import { envStr } from "../env";
 
 const [cmd, slug, ...rest] = process.argv.slice(2);
 if (!cmd || !slug) {
-  console.error("usage: admin.ts <create|build|deploy|resolve|update-root|finalize> <slug> ...");
+  console.error("usage: admin.ts <create|build|deploy|resolve|update-root|finalize|publish> <slug> ...");
   process.exit(1);
 }
 const rt = launchRuntime();
@@ -32,7 +36,7 @@ function onchainClients() {
 
 switch (cmd) {
   case "create": {
-    const [name, symbol, cap = "0.01", fresh = "0.02", regHours = "24", windowMin = "30", lockMin = "60", disputeMin = "30", verifiedCap] = rest;
+    const [name, symbol, cap = "0.01", fresh = "0.02", regHours = "24", windowMin = "30", lockMin = "60", disputeMin = "30", verifiedCap, minBalance = "0.0005", maxAgeHours = "168"] = rest;
     if (!name || !symbol) throw new Error("name and symbol are required");
     const rec = rt.service.create({
       slug,
@@ -46,8 +50,11 @@ switch (cmd) {
         // Verified humans (Base Verify) get verifiedCap; defaults to the normal cap.
         verifiedCapWei: parseEther(verifiedCap ?? cap).toString(),
         freshMaxNonce: 0,
+        freshMaxAgeHours: Number(maxAgeHours),
       },
       window: { delayAfterBuildSec: Number(disputeMin) * 60, lengthSec: Number(windowMin) * 60, lockSec: Number(lockMin) * 60 },
+      // Registering costs nothing but a signature; a minimum balance makes registering 100k fresh keys cost money.
+      minBalanceWei: parseEther(minBalance).toString(),
     });
     console.log(JSON.stringify(rt.service.publicView(rec), null, 2));
     break;
@@ -69,6 +76,10 @@ switch (cmd) {
   }
   case "update-root": {
     console.log(`root updated: ${await updateRoot(rt.service, slug, onchainClients())}`);
+    break;
+  }
+  case "publish": {
+    console.log(`wrote ${await publishMirror(rt.service, slug)}`);
     break;
   }
   case "finalize": {

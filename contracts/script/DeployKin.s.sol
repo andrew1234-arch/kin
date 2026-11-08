@@ -14,10 +14,16 @@ import {KinVault} from "../src/KinVault.sol";
 import {KinLaunchFactory} from "../src/KinLaunchFactory.sol";
 import {Addresses} from "./Addresses.sol";
 
-/// @notice Deploys KinRouter, KinHook (CREATE2 address mined for BEFORE_SWAP only), KinVault and
-///         KinLaunchFactory against the official Uniswap v4 PoolManager for the current chain.
-///         On anvil (31337) it first deploys a fresh PoolManager and a PoolSwapTest router.
-///         Writes deployments/<chainId>.json.
+/// @notice Deploys KinRouter, KinHook (CREATE2 address mined for BEFORE_SWAP + AFTER_SWAP), KinVault,
+///         KinLaunchFactory and a separate plain (hookless) factory for the sandbox comparison, against the
+///         official Uniswap v4 PoolManager for the current chain. On anvil (31337) it first deploys a fresh
+///         PoolManager and a PoolSwapTest router. Writes deployments/<chainId>[-<KIN_DEPLOYMENT_NAME>].json.
+///
+/// Hook limits (product parameters, recorded in the deployment file):
+///   KIN_MIN_REVIEW_SECONDS (1800; 0 on anvil)  KIN_MIN_WINDOW_SECONDS (300; 1 on anvil)
+///   KIN_MAX_WINDOW_SECONDS (86400)  KIN_MAX_LOCK_SECONDS (604800)  KIN_MAX_CREATOR_BPS (1000)
+/// The attack sandbox needs a window that opens within seconds, so it runs on its own deployment:
+///   KIN_DEPLOYMENT_NAME=sandbox KIN_MIN_REVIEW_SECONDS=0 KIN_MIN_WINDOW_SECONDS=60 forge script ...
 ///
 ///   forge script script/DeployKin.s.sol --rpc-url base_sepolia --broadcast
 contract DeployKin is Script {
@@ -35,18 +41,23 @@ contract DeployKin is Script {
             otherRouter = address(new PoolSwapTest(IPoolManager(pm)));
         }
 
+        KinHook.Limits memory limits = _limits();
         KinRouter router = new KinRouter(IPoolManager(pm), deployer);
-        bytes memory args = abi.encode(pm, address(router), deployer);
+        bytes memory args = abi.encode(pm, address(router), deployer, limits);
         (address predicted, bytes32 salt) = HookMiner.find(
-            Addresses.CREATE2_DEPLOYER, uint160(Hooks.BEFORE_SWAP_FLAG), type(KinHook).creationCode, args
+            Addresses.CREATE2_DEPLOYER,
+            uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG),
+            type(KinHook).creationCode,
+            args
         );
-        KinHook hook = new KinHook{salt: salt}(IPoolManager(pm), address(router), deployer);
+        KinHook hook = new KinHook{salt: salt}(IPoolManager(pm), address(router), deployer, limits);
         require(address(hook) == predicted, "hook address mismatch");
 
         KinVault vault = new KinVault(hook, address(router));
         router.wire(hook, vault);
         KinLaunchFactory factory = new KinLaunchFactory(IPoolManager(pm), hook);
         hook.setFactory(address(factory));
+        KinLaunchFactory plainFactory = new KinLaunchFactory(IPoolManager(pm), KinHook(address(0)));
         vm.stopBroadcast();
 
         console2.log("chainId     ", block.chainid);
@@ -55,6 +66,7 @@ contract DeployKin is Script {
         console2.log("KinHook     ", address(hook));
         console2.log("KinVault    ", address(vault));
         console2.log("Factory     ", address(factory));
+        console2.log("PlainFactory", address(plainFactory));
         console2.log("OtherRouter ", otherRouter);
 
         string memory k = "deployment";
@@ -66,7 +78,24 @@ contract DeployKin is Script {
         vm.serializeAddress(k, "kinHook", address(hook));
         vm.serializeBytes32(k, "kinHookSalt", salt);
         vm.serializeAddress(k, "kinVault", address(vault));
+        vm.serializeAddress(k, "plainFactory", address(plainFactory));
+        vm.serializeUint(k, "minReviewPeriod", limits.minReviewPeriod);
+        vm.serializeUint(k, "minWindow", limits.minWindow);
+        vm.serializeUint(k, "maxWindow", limits.maxWindow);
+        vm.serializeUint(k, "maxLock", limits.maxLock);
+        vm.serializeUint(k, "maxCreatorBps", limits.maxCreatorBps);
         string memory json = vm.serializeAddress(k, "factory", address(factory));
-        vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
+        string memory name = vm.envOr("KIN_DEPLOYMENT_NAME", string(""));
+        string memory suffix = bytes(name).length == 0 ? "" : string.concat("-", name);
+        vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), suffix, ".json"));
+    }
+
+    function _limits() internal view returns (KinHook.Limits memory l) {
+        bool local = block.chainid == Addresses.ANVIL;
+        l.minReviewPeriod = uint64(vm.envOr("KIN_MIN_REVIEW_SECONDS", local ? uint256(0) : 1800));
+        l.minWindow = uint64(vm.envOr("KIN_MIN_WINDOW_SECONDS", local ? uint256(1) : 300));
+        l.maxWindow = uint64(vm.envOr("KIN_MAX_WINDOW_SECONDS", uint256(86_400)));
+        l.maxLock = uint64(vm.envOr("KIN_MAX_LOCK_SECONDS", uint256(604_800)));
+        l.maxCreatorBps = uint16(vm.envOr("KIN_MAX_CREATOR_BPS", uint256(1000)));
     }
 }

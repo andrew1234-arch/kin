@@ -21,7 +21,7 @@
  *   GET  /sandbox/latest                              most recent finished run
  *   GET  /replay                                      latest replay report, or 404 "not-computed"
  *
- * Env: PORT, CORS_ORIGIN, BASE_RPC_URL (scan), LAUNCH_* (launches), SANDBOX_* (sandbox), DATA_DIR.
+ * Env: PORT, CORS_ORIGIN, TRUST_PROXY, BASE_RPC_URL (scan), LAUNCH_* (launches), SANDBOX_* (sandbox), DATA_DIR.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -57,8 +57,17 @@ function rateLimited(key: string, max: number, windowMs: number) {
   hits.set(key, list);
   return list.length > max;
 }
-const ipOf = (req: Request, server: { requestIP(r: Request): { address: string } | null }) =>
-  req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? server.requestIP(req)?.address ?? "unknown";
+/**
+ * The client address for rate limits. X-Forwarded-For is set by whoever sends the request, so it is only used
+ * when TRUST_PROXY=1 (the engine runs behind a proxy that overwrites it), and then only the entry that proxy
+ * appended (the last one). Otherwise the socket address.
+ */
+const TRUST_PROXY = envStr("TRUST_PROXY") === "1";
+const ipOf = (req: Request, server: { requestIP(r: Request): { address: string } | null }) => {
+  const socket = server.requestIP(req)?.address ?? "unknown";
+  if (!TRUST_PROXY) return socket;
+  return req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || socket;
+};
 
 // ------------------------------------------------------------------ scan
 
@@ -238,12 +247,12 @@ const server = Bun.serve({
           const body = (await req.json()) as { wallet: string; signature: Hex };
           return json(await svc.register(slug, body.wallet, body.signature));
         }
-        if (parts[2] === "allowlist" && req.method === "GET") return json(svc.entries(slug));
-        if (parts[2] === "wallets" && parts[3] && req.method === "GET") return json(svc.walletStatus(slug, parts[3]));
-        if (parts[2] === "proof" && parts[3] && req.method === "GET") return json(svc.proof(slug, parts[3]));
+        if (parts[2] === "allowlist" && req.method === "GET") return json(await svc.entries(slug));
+        if (parts[2] === "wallets" && parts[3] && req.method === "GET") return json(await svc.walletStatus(slug, parts[3]));
+        if (parts[2] === "proof" && parts[3] && req.method === "GET") return json(await svc.proof(slug, parts[3]));
         if (parts[2] === "evidence.json" && req.method === "GET") {
           const v = url.searchParams.get("version");
-          return new Response(svc.evidence(slug, v ? Number(v) : undefined), {
+          return new Response(await svc.evidence(slug, v ? Number(v) : undefined), {
             headers: { "content-type": "application/json", ...headers },
           });
         }

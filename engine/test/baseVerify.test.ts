@@ -144,17 +144,17 @@ describe("verified tier in a launch", () => {
     }
     const m1 = svc.verifyMessage("bv", human.address);
     expect((await svc.submitVerification("bv", human.address, m1.nonce, await human.signMessage({ message: m1.message }))).kind).toBe("verified");
-    expect(svc.walletStatus("bv", human.address).verified).toBe(true);
+    expect((await svc.walletStatus("bv", human.address)).verified).toBe(true);
 
     const m2 = svc.verifyMessage("bv", humansSecondWallet.address);
     await expect(
       svc.submitVerification("bv", humansSecondWallet.address, m2.nonce, await humansSecondWallet.signMessage({ message: m2.message })),
     ).rejects.toThrow("already verified another wallet");
-    expect(svc.walletStatus("bv", humansSecondWallet.address).verified).toBe(false);
+    expect((await svc.walletStatus("bv", humansSecondWallet.address)).verified).toBe(false);
     expect(svc.publicView(svc.get("bv")).verifiedWallets).toBe(1);
   });
 
-  test("verified wallets get the verified cap; a linked entity with a verified member gets it once", () => {
+  test("verified wallets get the verified cap; a linked entity with a verified member keeps the normal cap", () => {
     const tiers = { capWei: 10n, freshPoolCapWei: 20n, verifiedCapWei: 50n, freshMaxNonce: 0 };
     const [v, a, b] = [addr("verified-solo"), addr("linked-a"), addr("linked-b")];
     const { entities, capOf } = assignEntities(
@@ -171,6 +171,6 @@ describe("verified tier in a launch", () => {
     expect(solo.tier).toBe("verified");
     expect(capOf.get(solo.entityId)).toBe(50n);
     expect(linked.tier).toBe("linked");
-    expect(capOf.get(linked.entityId)).toBe(50n); // one shared cap, not 50 per wallet
+    expect(capOf.get(linked.entityId)).toBe(10n); // one verified account must not lift a whole bundle's cap
   });
 });

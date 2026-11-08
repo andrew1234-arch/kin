@@ -4,17 +4,22 @@ import { traceFunding } from "../cluster/funding";
 import type { HistoryProvider } from "../data/history";
 import { hex, Rpc } from "../data/rpc";
 import type { Link } from "../types";
-import { simulateKin, type KinCaps, type SimTier } from "./counterfactual";
+import { freshShareWei, simulateKin, type KinCaps, type SimTier } from "./counterfactual";
 import { findDeployBlock, findEarlyBuyers, measureBlockTime, type EarlyBuyer } from "./earlyBuyers";
 
 export interface ScanOptions {
   earlyBuyers: number;
+  /** Funding lookback before the first buy; 0 = the wallet's whole history. */
   fundingWindowHours: number;
   logsChunk: bigint;
   maxScanBlocks: bigint;
   maxHops: 1 | 2;
   /** A wallet whose nonce before its first buy is <= this counts as fresh. */
   freshMaxNonce: number;
+  /** ...as does a wallet first funded less than this many hours before its first buy (0 = off). */
+  freshMaxAgeHours: number;
+  /** ERC-20s whose transfers count as funding (sent by a wallet, not a contract). */
+  fundingTokens: Address[];
   caps: KinCaps;
   excluded: Set<string>;
   exclusionsSource: Record<string, unknown>;
@@ -22,11 +27,12 @@ export interface ScanOptions {
 
 export const DEFAULT_SCAN_OPTIONS = {
   earlyBuyers: 50,
-  fundingWindowHours: 72,
+  fundingWindowHours: 0,
   logsChunk: 2000n,
   maxScanBlocks: 43_200n,
   maxHops: 2 as const,
   freshMaxNonce: 0,
+  freshMaxAgeHours: 168,
 };
 
 /** JSON-safe scan result (wei and token amounts are decimal strings). */
@@ -99,8 +105,10 @@ export function methodParams(opts: ScanOptions, historyProvider: string) {
     fundingWindowHours: opts.fundingWindowHours,
     maxHops: opts.maxHops,
     maxScanBlocks: opts.maxScanBlocks.toString(),
-    linkRule: `${CLUSTER_METHOD}; funding traced before each first buy`,
-    freshRule: `nonce before first buy <= ${opts.freshMaxNonce}`,
+    linkRule: `${CLUSTER_METHOD}; funding (native ETH, or a funding token sent by a wallet) traced within maxHops before each first buy`,
+    fundingTokens: opts.fundingTokens,
+    freshRule: `nonce before first buy <= ${opts.freshMaxNonce}, or first funded < ${opts.freshMaxAgeHours} h before it`,
+    freshPoolRule: "fresh wallets split the fresh-pool cap evenly (each min(cap, pool / fresh wallets))",
     caps: { capWei: opts.caps.capWei.toString(), freshPoolCapWei: opts.caps.freshPoolCapWei.toString() },
     counterfactualRule: "replay buys in chain order; a buy lands if its entity's cumulative ETH stays within the cap",
     exclusions: opts.exclusionsSource,
@@ -137,7 +145,8 @@ export async function scanToken(
   const latest = BigInt(latestHex);
   const meta = await tokenMeta(rpc, token);
   const blockTime = await measureBlockTime(rpc, latest);
-  const windowBlocks = blockTime > 0 ? BigInt(Math.ceil((opts.fundingWindowHours * 3600) / blockTime)) : latest;
+  const windowBlocks =
+    blockTime > 0 && opts.fundingWindowHours > 0 ? BigInt(Math.ceil((opts.fundingWindowHours * 3600) / blockTime)) : latest;
   const floor0 = (b: bigint) => (b < 0n ? 0n : b);
 
   const deployBlock = await findDeployBlock(rpc, token, latest, hints.deployBlock);
@@ -156,10 +165,10 @@ export async function scanToken(
   );
 
   // Funding: hop 1 (who funded each buyer before its first buy), hop 2 (who funded those funders).
-  const { edges, lastFundedAt: fundedAt } = await traceFunding(
+  const { edges, lastFundedAt: fundedAt, firstFundedAt } = await traceFunding(
     history,
     buyers.map((b) => ({ wallet: b.wallet, beforeBlock: b.firstBuyBlock })),
-    { windowBlocks, excluded: opts.excluded, maxHops: opts.maxHops },
+    { windowBlocks, excluded: opts.excluded, maxHops: opts.maxHops, fundingTokens: opts.fundingTokens, rpc },
   );
 
   const clusters = clusterByFunding(
@@ -175,14 +184,20 @@ export async function scanToken(
     },
   );
 
-  // Entity assignment, mirroring the allowlist tiers: linked > fresh pool > aged.
-  const entityOf = new Map<string, { key: string; tier: SimTier }>();
+  // Entity assignment, mirroring the allowlist tiers: linked > fresh > aged. Fresh wallets split the fresh pool.
+  const entityOf = new Map<string, { key: string; tier: SimTier; capWei?: bigint }>();
   clusters.forEach((c, i) => c.members.forEach((m) => entityOf.set(m.toLowerCase(), { key: `E${i + 1}`, tier: "linked" })));
+  const freshKeys: string[] = [];
   buyers.forEach((b, i) => {
     const k = b.wallet.toLowerCase();
     if (entityOf.has(k)) return;
-    entityOf.set(k, nonces[i]! <= opts.freshMaxNonce ? { key: "FRESH", tier: "fresh" } : { key: `W:${k}`, tier: "aged" });
+    const first = firstFundedAt.get(k);
+    const young = opts.freshMaxAgeHours > 0 && first !== undefined && b.firstBuyTimestamp - first < opts.freshMaxAgeHours * 3600;
+    if (nonces[i]! <= opts.freshMaxNonce || young) freshKeys.push(k);
+    else entityOf.set(k, { key: `W:${k}`, tier: "aged" });
   });
+  const freshShare = freshShareWei(opts.caps.capWei, opts.caps.freshPoolCapWei, freshKeys.length);
+  freshKeys.forEach((k) => entityOf.set(k, { key: `F:${k}`, tier: "fresh", capWei: freshShare }));
   const sim = simulateKin(
     buyers.flatMap((b) => b.buys.map((x) => ({ wallet: b.wallet, tx: x.tx, block: x.block, logIndex: x.logIndex, ethIn: x.ethIn, tokens: x.tokens }))),
     (w) => entityOf.get(w.toLowerCase())!,

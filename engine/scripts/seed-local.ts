@@ -3,7 +3,8 @@
  * used on Base Sepolia. Never point this at a live network: it mints balances with anvil_setBalance.
  *
  *   demo-live : 6 bundle wallets (one funder), 2 aged wallets, 3 fresh wallets register; the allowlist is
- *               built, the launch deployed, window buys made (the bundle hits its shared cap), then finalized.
+ *               built, the launch deployed, window buys made (the bundle hits its shared cap; each fresh wallet
+ *               buys its third of the fresh pool), then finalized.
  *   demo-open : registration open, for registering from a browser wallet.
  *
  * Env: API_URL, RPC_URL, ADMIN_KEY, DEPLOYMENT, DATA_DIR (same as the server's).
@@ -61,6 +62,7 @@ rt.service.create({
     freshPoolCapWei: parseEther("0.006").toString(),
     verifiedCapWei: parseEther("0.01").toString(),
     freshMaxNonce: 0,
+    freshMaxAgeHours: 168,
   },
   window: { delayAfterBuildSec: 20, lengthSec: 90, lockSec: 30 },
 });
@@ -107,7 +109,7 @@ async function buy(a: PrivateKeyAccount, eth: string) {
 const outcomes: string[] = [];
 for (const b of bundle) outcomes.push(`bundle ${await buy(b, "0.003")}`);
 for (const a of aged) outcomes.push(`aged ${await buy(a, "0.005")}`);
-for (const f of fresh) outcomes.push(`fresh ${await buy(f, "0.003")}`);
+for (const f of fresh) outcomes.push(`fresh ${await buy(f, "0.002")}`); // 0.006 pool / 3 wallets
 console.log(`[${live}] window buys:`, outcomes.join(", "));
 
 while ((await now()) < onchain.windowEnd) await Bun.sleep(1000);
@@ -126,6 +128,7 @@ rt.service.create({
     freshPoolCapWei: parseEther("0.02").toString(),
     verifiedCapWei: parseEther("0.03").toString(), // verified humans (Base Verify, when enabled) get more
     freshMaxNonce: 0,
+    freshMaxAgeHours: 168,
   },
   window: { delayAfterBuildSec: 1800, lengthSec: 1800, lockSec: 3600 },
 });

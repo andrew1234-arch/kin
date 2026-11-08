@@ -14,6 +14,7 @@ import {KinHook} from "../src/KinHook.sol";
 import {KinRouter} from "../src/KinRouter.sol";
 import {KinVault} from "../src/KinVault.sol";
 import {KinLaunchFactory} from "../src/KinLaunchFactory.sol";
+import {LaunchParamsFile} from "./LaunchParamsFile.sol";
 
 /// @notice Gate B, step 1: create a Kin launch whose window opens GATE_B_DELAY_SECONDS from now.
 ///         Allowlist: the buyer (own entity, small cap) plus one dummy leaf so the proof is non-trivial.
@@ -28,6 +29,7 @@ contract GateBCreateLaunch is Script {
         bytes32 entity;
         uint256 cap;
         bytes32 dummyLeaf;
+        uint64 minReview;
     }
 
     function run() external {
@@ -40,29 +42,28 @@ contract GateBCreateLaunch is Script {
         g.cap = vm.envOr("GATE_B_CAP_WEI", uint256(0.001 ether));
         g.entity = keccak256(abi.encode("gate-b", g.buyer));
         g.dummyLeaf = _leaf(address(0xdEaD), keccak256("gate-b:dummy"), g.cap);
+        g.minReview = KinHook(dep.readAddress(".kinHook")).minReviewPeriod();
         KinLaunchFactory.LaunchParams memory p = _params(g);
 
         vm.startBroadcast(pk);
-        (PoolId id, address token) = factory.createLaunch(p, false);
+        factory.createLaunch(p, false);
         vm.stopBroadcast();
 
+        // The token address (and so the pool id) depends on the block that creates it, and forge simulates in a
+        // different block than it broadcasts in: the swap step reads the real pool from factory.launchKey(index).
         uint256 index = factory.launchCount() - 1;
         console2.log("launch index", index);
-        console2.log("token", token);
         console2.log("window opens at", p.windowStart);
-        _write(g, index, id, token, p);
+        _write(g, index, p);
     }
 
     function _params(Gate memory g) internal view returns (KinLaunchFactory.LaunchParams memory p) {
         bytes32 leafBuyer = _leaf(g.buyer, g.entity, g.cap);
-        uint64 delay = uint64(vm.envOr("GATE_B_DELAY_SECONDS", uint256(90)));
+        // The hook refuses windows that open sooner than its minimum review period.
+        uint64 delay = uint64(vm.envOr("GATE_B_DELAY_SECONDS", uint256(g.minReview) + 30));
         p.name = "Kin Gate B";
         p.symbol = "KGB";
-        p.totalSupply = 1_000_000_000 ether;
-        p.fee = 10_000;
-        p.tickSpacing = 200;
-        p.startTick = 184_200;
-        p.tickLower = 69_000;
+        LaunchParamsFile.apply_(p);
         p.root = leafBuyer < g.dummyLeaf
             ? keccak256(abi.encodePacked(leafBuyer, g.dummyLeaf))
             : keccak256(abi.encodePacked(g.dummyLeaf, leafBuyer));
@@ -74,13 +75,9 @@ contract GateBCreateLaunch is Script {
         p.salt = keccak256(abi.encode("gate-b", block.timestamp));
     }
 
-    function _write(Gate memory g, uint256 index, PoolId id, address token, KinLaunchFactory.LaunchParams memory p)
-        internal
-    {
+    function _write(Gate memory g, uint256 index, KinLaunchFactory.LaunchParams memory p) internal {
         string memory k = "gateb";
         vm.serializeUint(k, "launchIndex", index);
-        vm.serializeAddress(k, "token", token);
-        vm.serializeBytes32(k, "poolId", PoolId.unwrap(id));
         vm.serializeAddress(k, "buyer", g.buyer);
         vm.serializeBytes32(k, "entityId", g.entity);
         vm.serializeUint(k, "entityCap", g.cap);
@@ -135,7 +132,7 @@ contract GateBSwap is Script {
         c.other = dep.readAddress(".otherRouter");
         c.key = KinLaunchFactory(dep.readAddress(".factory")).launchKey(gb.readUint(".launchIndex"));
         c.id = c.key.toId();
-        require(PoolId.unwrap(c.id) == gb.readBytes32(".poolId"), "pool id mismatch");
+        require(c.hook.getLaunch(c.id).configured, "launch at that index is not a configured Kin launch");
         c.buyer = gb.readAddress(".buyer");
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = gb.readBytes32(".proof0");

@@ -3,6 +3,7 @@ import { getAddress, keccak256, toBytes, type Address, type Hex } from "viem";
 import { sortAddrs } from "../cluster/cluster";
 import type { Cluster, Entity, Tier, WalletProfile } from "../types";
 import { canonicalJson } from "./canonical";
+import { freshShareWei } from "../scan/counterfactual";
 
 /**
  * Allowlist builder: registrations + clusters → tiers → leaves → Merkle root + proofs + evidence.
@@ -16,12 +17,17 @@ export const LEAF_ENCODING = ["address", "bytes32", "uint256"] as const;
 export interface TierConfig {
   /** Cap for a linked entity or an aged, unlinked wallet (wei). */
   capWei: bigint;
-  /** ONE shared cap for every fresh wallet together (wei). */
+  /** Total for every fresh wallet together, split evenly: each gets min(capWei, pool / fresh wallets) (wei). */
   freshPoolCapWei: bigint;
-  /** Cap for a Base Verify verified wallet (wei). */
+  /** Cap for a Base Verify verified wallet on its own (wei). Never lifts a linked entity's shared cap. */
   verifiedCapWei: bigint;
   /** A wallet with nonce <= this at the snapshot is "fresh" (no meaningful history). */
   freshMaxNonce: number;
+  /**
+   * ...as is a wallet first funded less than this many hours before the snapshot (0 = off), so one cheap
+   * self-transaction doesn't turn a new wallet into an aged one.
+   */
+  freshMaxAgeHours?: number;
 }
 
 export interface LaunchRef {
@@ -29,6 +35,8 @@ export interface LaunchRef {
   /** Free-form id until the pool exists (e.g. the factory salt or a slug). */
   launchId: string;
   snapshotBlock: string;
+  /** Unix seconds of the snapshot block; wallet age (freshMaxAgeHours) is measured from it. */
+  snapshotTimestamp?: number;
 }
 
 export interface BuildInput {
@@ -63,31 +71,34 @@ export interface BuildOutput {
   evidenceHash: Hex;
 }
 
-export const FRESH_POOL_ID: Hex = keccak256(toBytes("kin:fresh-pool"));
+export const freshEntityId = (w: Address): Hex => keccak256(toBytes("kin:fresh:" + w.toLowerCase()));
 export const linkedEntityId = (members: Address[]): Hex =>
   keccak256(toBytes("kin:linked:" + sortAddrs(members).map((m) => m.toLowerCase()).join(",")));
 export const soloEntityId = (w: Address): Hex => keccak256(toBytes("kin:solo:" + w.toLowerCase()));
 export const verifiedEntityId = (w: Address): Hex => keccak256(toBytes("kin:verified:" + w.toLowerCase()));
 
 /** Assign every registered wallet to exactly one entity. */
-export function assignEntities(wallets: WalletProfile[], clusters: Cluster[], cfg: TierConfig) {
+export function assignEntities(wallets: WalletProfile[], clusters: Cluster[], cfg: TierConfig, snapshotTimestamp?: number) {
   const byWallet = new Map(wallets.map((w) => [w.wallet.toLowerCase(), w]));
   const entities: Entity[] = [];
   const capOf = new Map<Hex, bigint>();
   const inCluster = new Set<string>();
 
-  // 1. Linked: one entity, one shared cap. A cluster with a verified member gets the verified cap.
+  // 1. Linked: one entity, one shared cap. Verification never lifts it: one verified (or borrowed) account must
+  //    not raise a whole bundle's cap.
   for (const c of clusters) {
     const members = sortAddrs(c.members.filter((m) => byWallet.has(m.toLowerCase())));
     if (members.length < 2) continue;
     members.forEach((m) => inCluster.add(m.toLowerCase()));
     const id = linkedEntityId(members);
-    const anyVerified = members.some((m) => byWallet.get(m.toLowerCase())?.verified);
     entities.push({ entityId: id, tier: "linked", members, links: c.links });
-    capOf.set(id, anyVerified ? cfg.verifiedCapWei : cfg.capWei);
+    capOf.set(id, cfg.capWei);
   }
 
-  // 2. Singletons: verified > aged > fresh (fresh share one pooled entity).
+  // 2. Singletons: verified > fresh (new by nonce or by age) > aged. Fresh wallets split the fresh pool.
+  const maxAge = (cfg.freshMaxAgeHours ?? 0) * 3600;
+  const young = (w: WalletProfile) =>
+    maxAge > 0 && snapshotTimestamp !== undefined && w.firstFundedAt !== undefined && snapshotTimestamp - w.firstFundedAt < maxAge;
   const fresh: Address[] = [];
   for (const w of [...wallets].sort((a, b) => a.wallet.toLowerCase().localeCompare(b.wallet.toLowerCase()))) {
     if (inCluster.has(w.wallet.toLowerCase())) continue;
@@ -96,7 +107,7 @@ export function assignEntities(wallets: WalletProfile[], clusters: Cluster[], cf
       const id = verifiedEntityId(addr);
       entities.push({ entityId: id, tier: "verified", members: [addr], links: [] });
       capOf.set(id, cfg.verifiedCapWei);
-    } else if (w.nonce <= cfg.freshMaxNonce) {
+    } else if (w.nonce <= cfg.freshMaxNonce || young(w)) {
       fresh.push(addr);
     } else {
       const id = soloEntityId(addr);
@@ -104,15 +115,17 @@ export function assignEntities(wallets: WalletProfile[], clusters: Cluster[], cf
       capOf.set(id, cfg.capWei);
     }
   }
-  if (fresh.length > 0) {
-    entities.push({ entityId: FRESH_POOL_ID, tier: "fresh", members: fresh, links: [] });
-    capOf.set(FRESH_POOL_ID, cfg.freshPoolCapWei);
+  const share = freshShareWei(cfg.capWei, cfg.freshPoolCapWei, fresh.length);
+  for (const addr of fresh) {
+    const id = freshEntityId(addr);
+    entities.push({ entityId: id, tier: "fresh", members: [addr], links: [] });
+    capOf.set(id, share);
   }
   return { entities, capOf };
 }
 
 export function buildAllowlist(input: BuildInput): BuildOutput {
-  const { entities, capOf } = assignEntities(input.wallets, input.clusters, input.tiers);
+  const { entities, capOf } = assignEntities(input.wallets, input.clusters, input.tiers, input.launch.snapshotTimestamp);
 
   const rows: { wallet: Address; entityId: Hex; tier: Tier; cap: bigint }[] = [];
   for (const e of entities) {
@@ -151,6 +164,7 @@ export function buildAllowlist(input: BuildInput): BuildOutput {
       freshPoolCapWei: input.tiers.freshPoolCapWei.toString(),
       verifiedCapWei: input.tiers.verifiedCapWei.toString(),
       freshMaxNonce: input.tiers.freshMaxNonce,
+      freshMaxAgeHours: input.tiers.freshMaxAgeHours ?? 0,
     },
     method: input.method,
     stats,
@@ -163,7 +177,12 @@ export function buildAllowlist(input: BuildInput): BuildOutput {
     })),
     wallets: [...input.wallets]
       .sort((a, b) => a.wallet.toLowerCase().localeCompare(b.wallet.toLowerCase()))
-      .map((w) => ({ wallet: getAddress(w.wallet), nonce: w.nonce, verified: !!w.verified })),
+      .map((w) => ({
+        wallet: getAddress(w.wallet),
+        nonce: w.nonce,
+        firstFundedAt: w.firstFundedAt ?? null,
+        verified: !!w.verified,
+      })),
   };
   const evidenceJson = canonicalJson(evidence);
   return { root, entries, stats, evidenceJson, evidenceHash: keccak256(toBytes(evidenceJson)) };

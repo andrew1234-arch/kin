@@ -9,10 +9,14 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {KinHook} from "../src/KinHook.sol";
 import {KinRouter} from "../src/KinRouter.sol";
 import {KinLaunchFactory} from "../src/KinLaunchFactory.sol";
+import {LaunchParamsFile} from "./LaunchParamsFile.sol";
 
 /// @notice Local (anvil) fixture for the engine's scan pipeline: a plain launch where one funder funds
 ///         3 fresh wallets that each buy, and 2 independently funded wallets that also buy.
 ///         Expected scan result: one 3-wallet entity, two singletons. Never run against a live network.
+///         Two steps, because the token address depends on the block that creates it and forge simulates in a
+///         different block than it broadcasts in: LocalScanFixture creates the launch, then
+///         LocalScanFixture.s.sol:LocalScanFixtureBuys reads the real pool from the factory and makes the buys.
 contract LocalScanFixture is Script {
     using stdJson for string;
 
@@ -20,22 +24,30 @@ contract LocalScanFixture is Script {
         require(block.chainid == 31337, "local only");
         uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         string memory dep = vm.readFile("deployments/31337.json");
-        KinLaunchFactory factory = KinLaunchFactory(dep.readAddress(".factory"));
+        KinLaunchFactory factory = KinLaunchFactory(dep.readAddress(".plainFactory"));
         KinRouter router = KinRouter(payable(dep.readAddress(".kinRouter")));
 
         KinLaunchFactory.LaunchParams memory p;
         p.name = "Scan Fixture";
         p.symbol = "SCAN";
-        p.totalSupply = 1_000_000_000 ether;
-        p.fee = 10_000;
-        p.tickSpacing = 200;
-        p.startTick = 184_200;
-        p.tickLower = 69_000;
+        LaunchParamsFile.apply_(p);
         p.salt = keccak256(abi.encode("scan-fixture", block.timestamp));
         vm.broadcast(deployerPk);
-        (, address token) = factory.createLaunch(p, true);
+        factory.createLaunch(p, true);
+    }
+}
+
+contract LocalScanFixtureBuys is Script {
+    using stdJson for string;
+
+    function run() external {
+        require(block.chainid == 31337, "local only");
+        uint256 deployerPk = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        string memory dep = vm.readFile("deployments/31337.json");
+        KinLaunchFactory factory = KinLaunchFactory(dep.readAddress(".plainFactory"));
+        KinRouter router = KinRouter(payable(dep.readAddress(".kinRouter")));
         PoolKey memory key = factory.launchKey(factory.launchCount() - 1);
-        require(Currency.unwrap(key.currency1) == token, "key mismatch");
+        address token = Currency.unwrap(key.currency1);
 
         uint256 funderPk = uint256(keccak256("kin-local:bundle-funder"));
         vm.broadcast(deployerPk);

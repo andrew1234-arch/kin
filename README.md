@@ -12,6 +12,10 @@ one cap, fresh wallets share one pooled cap, aged unlinked wallets get their own
 hook only accepts buys through the Kin router, within each entity's cap, and the tokens sit in a vault until the
 lock ends. Then trading opens to everyone. This makes bundling expensive and visible; it does not stop it.
 
+What Kin does not protect, by design today: buys after the window (open trading, no caps), the order of buys
+inside the window (earlier buys get a better price), and the launcher's honesty about the root and evidence
+(anyone can recompute them from the published evidence, but nothing onchain checks them). See BUILD_LOG.md.
+
 ## Layout
 
 ```
@@ -27,8 +31,8 @@ SCORECARD.md the Vibeathon 02 rubric, scored with evidence and open gaps
 
 | Piece | State |
 |---|---|
-| Contracts | 31 tests pass (`cd contracts && forge test`) |
-| Engine | 50 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
+| Contracts | 41 tests pass (`cd contracts && forge test`) |
+| Engine | 52 tests pass (`cd engine && bun test`), including a launch-backend integration test on a local chain |
 | Cluster engine | Weighted evidence ported from [Nuno](https://github.com/andrew1234-arch/nuno) (same funder 1.0, shared source 0.8, same-block early buy 0.5, merge at 1.0, hub cap with farm exception) |
 | Kin Scan (API + page) | Built; verified on a local chain. Not yet run on Base mainnet |
 | Attack sandbox (relayer + page) | Built; verified on a local chain with 1 s blocks: Kin pool 10/20, plain pool 20/20, ~20 s |

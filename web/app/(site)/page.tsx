@@ -29,12 +29,12 @@ export default function Home() {
       <div className="steps">
         <div className="card step">
           <h3>Register</h3>
-          <p className="muted small">Wallets sign up for a launch before it opens. Signing is free.</p>
+          <p className="muted small">Wallets sign up for a launch before it opens. Signing is free; a launch can require a small balance.</p>
         </div>
         <div className="card step">
           <h3>Group by funding</h3>
           <p className="muted small">
-            Wallets funded by the same source become one entity with one cap. Fresh wallets share a single pooled cap.
+            Wallets funded by the same source become one entity with one cap. New wallets split one fresh pool evenly.
             Every link is backed by transaction hashes.
           </p>
         </div>
@@ -95,7 +95,7 @@ export default function Home() {
       </div>
       <p className="faint small" style={{ marginTop: 12 }}>
         Kin makes bundling expensive and visible; it does not stop it. Pre-aged or exchange-funded wallets can still get
-        through, which is why fresh wallets share one cap and window buys are locked.
+        through, which is why new wallets split one fixed fresh pool and window buys are locked.
       </p>
     </>
   );

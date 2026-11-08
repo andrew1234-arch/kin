@@ -9,7 +9,7 @@ import { launchChain, LAUNCH_RPC_URL } from "@/lib/config";
 
 const wagmiConfig = createConfig({
   chains: [launchChain],
-  connectors: [injected(), coinbaseWallet({ appName: "Kin" })],
+  connectors: [injected(), coinbaseWallet({ appName: "Kin", preference: { options: "eoaOnly" } })],
   transports: { [launchChain.id]: http(LAUNCH_RPC_URL || undefined) },
   ssr: true,
 });

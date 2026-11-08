@@ -14,6 +14,7 @@ import {KinHook} from "../src/KinHook.sol";
 import {KinRouter} from "../src/KinRouter.sol";
 import {KinVault} from "../src/KinVault.sol";
 import {KinLaunchFactory} from "../src/KinLaunchFactory.sol";
+import {KinToken} from "../src/KinToken.sol";
 import {KinFixture} from "./utils/KinFixture.sol";
 import {SortedMerkle} from "./utils/SortedMerkle.sol";
 
@@ -44,9 +45,83 @@ contract KinLaunchTest is KinFixture {
         assertEq(IERC20(kinToken).balanceOf(address(factory)), 0);
     }
 
-    function test_HookAddressHasOnlyBeforeSwapFlag() public view {
+    function test_HookAddressHasOnlySwapFlags() public view {
         uint160 flags = uint160(address(hook)) & uint160((1 << 14) - 1);
-        assertEq(flags, uint160(1 << 7)); // Hooks.BEFORE_SWAP_FLAG
+        assertEq(flags, uint160((1 << 7) | (1 << 6))); // Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
+    }
+
+    function test_FactoryEnforcesHookLimits() public {
+        KinLaunchFactory.LaunchParams memory p = _params("Bad", "BAD", bytes32("review"));
+        p.windowStart = uint64(block.timestamp) + MIN_REVIEW - 1; // no time to review the root
+        p.windowEnd = p.windowStart + WINDOW;
+        vm.expectRevert(KinHook.InvalidConfig.selector);
+        factory.createLaunch(p, false);
+
+        p = _params("Bad", "BAD", bytes32("short"));
+        p.windowEnd = p.windowStart + MIN_WINDOW - 1; // cosmetic window
+        vm.expectRevert(KinHook.InvalidConfig.selector);
+        factory.createLaunch(p, false);
+
+        p = _params("Bad", "BAD", bytes32("long"));
+        p.windowEnd = p.windowStart + MAX_WINDOW + 1; // endless window
+        vm.expectRevert(KinHook.InvalidConfig.selector);
+        factory.createLaunch(p, false);
+
+        p = _params("Bad", "BAD", bytes32("lock"));
+        p.lockDuration = MAX_LOCK + 1;
+        vm.expectRevert(KinHook.InvalidConfig.selector);
+        factory.createLaunch(p, false);
+
+        p = _params("Bad", "BAD", bytes32("creator"));
+        p.creatorAllocation = SUPPLY * MAX_CREATOR_BPS / 10_000 + 1;
+        vm.expectRevert(KinHook.InvalidConfig.selector);
+        factory.createLaunch(p, false);
+    }
+
+    function test_CreatorAllocationIsOnTheReceipt() public {
+        KinLaunchFactory.LaunchParams memory p = _params("Creator", "CRT", bytes32("creator-ok"));
+        p.creatorAllocation = SUPPLY * MAX_CREATOR_BPS / 10_000;
+        (PoolId id,) = factory.createLaunch(p, false);
+        KinHook.Receipt memory r = hook.getReceipt(id);
+        assertEq(r.totalSupply, SUPPLY);
+        assertEq(r.creatorAllocation, p.creatorAllocation);
+    }
+
+    function test_PlainPoolsOnlyFromThePlainFactory() public {
+        vm.expectRevert(KinLaunchFactory.BadParams.selector);
+        factory.createLaunch(_params("Plain", "PLN", bytes32("p1")), true);
+        vm.expectRevert(KinLaunchFactory.BadParams.selector);
+        plainFactory.createLaunch(_params("Kin", "KIN", bytes32("p2")), false);
+    }
+
+    function test_PreInitialisedPoolAtTheSamePriceIsTolerated() public {
+        KinLaunchFactory.LaunchParams memory p = _params("Pre", "PRE", bytes32("pre"));
+        PoolKey memory key = _predictKey(p);
+        manager.initialize(key, TickMath.getSqrtPriceAtTick(START_TICK)); // a griefer gets there first
+        (PoolId id,) = factory.createLaunch(p, false);
+        assertEq(PoolId.unwrap(id), PoolId.unwrap(key.toId()));
+        assertTrue(hook.getLaunch(id).configured);
+    }
+
+    function test_PreInitialisedPoolAtAnotherPriceIsRefused() public {
+        KinLaunchFactory.LaunchParams memory p = _params("Pre", "PRE", bytes32("pre2"));
+        manager.initialize(_predictKey(p), TickMath.getSqrtPriceAtTick(START_TICK + SPACING));
+        vm.expectRevert(KinLaunchFactory.PoolPreInitialized.selector);
+        factory.createLaunch(p, false);
+    }
+
+    function test_CreatorCollectsFees() public {
+        _openWindow();
+        _buy(alice, 1 ether);
+        vm.prank(stranger);
+        vm.expectRevert(KinLaunchFactory.NotCreator.selector);
+        factory.collectFees(kinKey);
+
+        uint256 before = address(this).balance;
+        (uint256 eth,) = factory.collectFees(kinKey);
+        assertGt(eth, 0, "no ETH fees");
+        assertApproxEqAbs(eth, 0.01 ether, 1, "1% of a 1 ETH buy"); // fee tier 10_000 = 1%
+        assertEq(address(this).balance - before, eth);
     }
 
     function test_ConfigureOnlyByFactory() public {
@@ -132,6 +207,47 @@ contract KinLaunchTest is KinFixture {
         vm.deal(stranger, 1 ether);
         _buy(stranger, 0.1 ether);
         assertEq(hook.entitySpent(kinId, keccak256("entity:stranger")), 0.1 ether);
+    }
+
+    function test_LateRootUpdatePushesTheWindowBack() public {
+        vm.warp(windowStart - 1); // one second before the window
+        hook.updateAllowlist(kinId, keccak256("late-root"), keccak256("ev"), _stats());
+        KinHook.Launch memory l = hook.getLaunch(kinId);
+        assertEq(l.windowStart, block.timestamp + MIN_REVIEW, "a full review period follows the change");
+        assertEq(l.windowEnd - l.windowStart, WINDOW, "window length kept");
+    }
+
+    function test_EntityCapIsPinnedByTheFirstBuy() public {
+        // A second leaf for the bundle entity claims a bigger cap than the one already proven.
+        leaves.push(SortedMerkle.leaf(stranger, BUNDLE, 5 ether));
+        wallets.push(stranger);
+        entityOf.push(BUNDLE);
+        capOf.push(5 ether);
+        hook.updateAllowlist(kinId, SortedMerkle.root(leaves), keccak256("evidence-v2.json"), _stats());
+        windowStart = hook.getLaunch(kinId).windowStart;
+        _openWindow();
+        _buy(bundle[0], PER_WALLET);
+        vm.deal(stranger, 10 ether);
+        KinRouter.Allowance memory a = _allowance(stranger);
+        vm.prank(stranger);
+        _expectAfterSwapRevert(abi.encodeWithSelector(KinHook.EntityCapMismatch.selector, BUNDLE, CAP, 5 ether));
+        router.swapExactIn{value: 2 ether}(kinKey, true, 2 ether, 0, a, block.timestamp);
+    }
+
+    function test_PartialFillChargesWhatWasPaid() public {
+        bytes32 whale = keccak256("entity:whale");
+        leaves.push(SortedMerkle.leaf(stranger, whale, 100_000 ether));
+        wallets.push(stranger);
+        entityOf.push(whale);
+        capOf.push(100_000 ether);
+        hook.updateAllowlist(kinId, SortedMerkle.root(leaves), keccak256("evidence-v2.json"), _stats());
+        _openWindow();
+        vm.deal(stranger, 50_000 ether);
+        _buy(stranger, 50_000 ether); // far more than the whole curve costs
+        uint256 paid = 50_000 ether - stranger.balance;
+        assertLt(paid, 50_000 ether, "partial fill");
+        assertEq(hook.entitySpent(kinId, whale), paid, "entity charged what it paid");
+        assertEq(hook.getWindowStats(kinId).totalVolume, paid, "receipt volume is what was paid");
     }
 
     function test_RootUpdateBlockedAfterWindowStart() public {
@@ -235,7 +351,7 @@ contract KinLaunchTest is KinFixture {
         _openWindow();
         _buy(fresh[0], 0.2 ether);
         _buy(fresh[1], 0.2 ether);
-        _expectHookRevert(abi.encodeWithSelector(KinHook.EntityCapExceeded.selector, FRESH, FRESH_CAP, 0.6 ether));
+        _expectAfterSwapRevert(abi.encodeWithSelector(KinHook.EntityCapExceeded.selector, FRESH, FRESH_CAP, 0.6 ether));
         _buy(fresh[2], 0.2 ether);
         _buy(fresh[2], 0.1 ether);
         assertEq(hook.entitySpent(kinId, FRESH), FRESH_CAP);
@@ -256,6 +372,14 @@ contract KinLaunchTest is KinFixture {
     }
 
     // ------------------------------------------------------------------ Fairness Receipt
+
+    function test_ReceiptIsFinalAtWindowEndWithoutATransaction() public {
+        assertFalse(hook.getReceipt(kinId).finalized);
+        _closeWindow();
+        KinHook.Receipt memory r = hook.getReceipt(kinId);
+        assertTrue(r.finalized);
+        assertEq(r.finalizedAt, windowEnd);
+    }
 
     function test_FinalizeRecordsReceipt() public {
         vm.expectRevert(KinHook.WindowNotEnded.selector);
@@ -345,7 +469,22 @@ contract KinLaunchTest is KinFixture {
             lockDuration: LOCK,
             buyIsZeroForOne: true,
             admin: address(this),
-            stats: _stats()
+            stats: _stats(),
+            totalSupply: SUPPLY,
+            creatorAllocation: 0
+        });
+    }
+
+    function _predictKey(KinLaunchFactory.LaunchParams memory p) internal view returns (PoolKey memory key) {
+        bytes32 salt = keccak256(abi.encode(address(this), p.salt, block.number));
+        bytes memory init = abi.encodePacked(type(KinToken).creationCode, abi.encode(p.name, p.symbol, p.totalSupply, address(factory)));
+        address token = vm.computeCreate2Address(salt, keccak256(init), address(factory));
+        key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(token),
+            fee: FEE,
+            tickSpacing: SPACING,
+            hooks: IHooks(address(hook))
         });
     }
 }
