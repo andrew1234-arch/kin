@@ -4,7 +4,7 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
-## D4 — Sun 8 Nov 2026: architecture and system-design review
+## D4, Sun 8 Nov 2026: architecture and system-design review
 
 Tool: AI coding agent. Prompt: run a max-level review of the contracts, the chain usage and the system design,
 report every finding, then apply them with minimal edits. 31 findings; 24 applied, 7 left as stated design limits.
@@ -77,7 +77,7 @@ Merged into `vibeathon-gaps` on Sun 8 Nov, on top of the Nuno cluster engine por
 the weighted rule and adds the new funding sources; `contracts/test/fixtures/engine-allowlist.json` regenerated from the
 merged engine. Checked: engine 52 tests, contracts 41 tests.
 
-## D4 — Fri 6 Nov 2026: rubric scorecard, Nuno cluster engine port
+## D4, Fri 6 Nov 2026: rubric scorecard, Nuno cluster engine port
 
 **Tool:** AI coding agent (Claude Code). **Prompt:** "use the metric to audit the current build in the repo and fix all
 that is wrong there asap", then "fetch from nuno repo ... and get the code you need". **Changed by hand:** nothing.
@@ -110,7 +110,7 @@ exchange-funded buyers unlinked; attack sandbox: Kin pool 10/20 landed (`EntityC
 
 ---
 
-## D3 — Thu 5 Nov 2026: Base Verify tier
+## D3, Thu 5 Nov 2026: Base Verify tier
 
 **Tool:** AI coding agent. **Prompt:** "Continue the build". **Changed by hand:** nothing.
 
@@ -139,7 +139,7 @@ the other wallet the fresh-pool cap.
 
 ---
 
-## D2 — Wed 4 Nov 2026: third code-review round
+## D2, Wed 4 Nov 2026: third code-review round
 
 **Tool:** AI coding agent (a third `/code-review` pass, 13 findings, then "fix all of them").
 **Changed by hand:** nothing.
@@ -167,7 +167,7 @@ RPC error for the Sepolia script).
 
 ---
 
-## D2 — Wed 4 Nov 2026: second code-review round
+## D2, Wed 4 Nov 2026: second code-review round
 
 **Tool:** same as above (a second `/code-review` pass, 15 findings, then "fix all of them").
 **Changed by hand:** commit authorship moved to the owner's account (history rewritten, no code changed).
@@ -196,7 +196,7 @@ a stubbed failing `cast code` stops without redeploying; `real-mainnet.sh` passe
 
 ---
 
-## D2 — Wed 4 Nov 2026: code-review fixes
+## D2, Wed 4 Nov 2026: code-review fixes
 
 **Tool:** AI coding agent, `/code-review` (15 findings on the replay selector, probe and real-network scripts), then
 "fix all of them". **Changed by hand:** nothing yet.
@@ -237,7 +237,7 @@ Checked (all local; Base itself is still unreachable from this environment):
 
 ---
 
-## D1 (continued) — Tue 3 Nov 2026, session 3
+## D1 (continued), Tue 3 Nov 2026, session 3
 
 **Tool:** AI coding agent. **Prompt:** "Test it against real services and do the replay samples".
 **Changed by hand:** nothing yet.
@@ -260,7 +260,7 @@ and no replay number exists. A route through Google Cloud tooling was considered
 
 ---
 
-## D1 (continued) — Tue 3 Nov 2026, session 2
+## D1 (continued), Tue 3 Nov 2026, session 2
 
 **Tool:** AI coding agent (same cloud session). **Prompt:** "Continue the build, start building the rest asap",
 then "Continue". **Changed by hand:** nothing yet.
@@ -319,10 +319,10 @@ connector was tried first; its SDK pulls a Coinbase CDP package with missing opt
 
 ---
 
-## D1 — Tue 3 Nov 2026
+## D1, Tue 3 Nov 2026
 
 **Tool:** AI coding agent (cloud session, repo `andrew1234-arch/kin`, branch `ccr-1ff4e28c-is4t76`).
-**Prompt:** the full "KIN — Build Brief (Vibestarter Vibeathon 02, Base)", pasted by the owner, with
+**Prompt:** the full "KIN: Build Brief (Vibestarter Vibeathon 02, Base)", pasted by the owner, with
 "start with the directives in this text".
 **Changed by hand:** nothing yet.
 
@@ -362,7 +362,7 @@ GitHub and npm work. Workarounds, none of which invent data:
 - `KinLaunchFactory`: fixed-supply `KinToken`, native-ETH/token pool, one-sided locked liquidity,
   `configureLaunch`, all parameters in `LaunchCreated`; `plain = true` gives the hookless comparison pool.
 - Hook address mined with Uniswap's `HookMiner` for BEFORE_SWAP only.
-- Tests: **31 passing** — the 8 PoC behaviours (bundle of 20: Kin pool 10/20 landed, plain pool 20/20),
+- Tests: **31 passing**: the 8 PoC behaviours (bundle of 20: Kin pool 10/20 landed, plain pool 20/20),
   `windowStart`, vault lock and claim, native-ETH buys and refunds, root updates blocked after
   `windowStart`, `finalize()` values, fresh-pool sharing, a 1000-run fuzz showing an entity never exceeds
   its cap, and an engine cross-check.

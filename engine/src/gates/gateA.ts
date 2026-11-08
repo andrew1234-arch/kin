@@ -1,5 +1,5 @@
 /**
- * GATE A — indexing cost and speed test.
+ * GATE A: indexing cost and speed test.
  *
  * Runs the full Kin Scan pipeline (deploy block → early buyers → hop-1/hop-2 funding → clusters →
  * counterfactual) on each token and records wall time and request counts per method. It never uses a

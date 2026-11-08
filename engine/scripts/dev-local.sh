@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Full local stack: anvil (1 s blocks) + Kin contracts + engine API seeded with demo data.
-# Scan runs against the local chain (scan fixture token), launches and the sandbox too.
+# Launches and the sandbox run on the local chain. Scan does too (fixture token) unless BASE_RPC_URL is set.
 #   ./engine/scripts/dev-local.sh            # keeps running; Ctrl-C to stop
 # Then: cd web && NEXT_PUBLIC_KIN_API=http://127.0.0.1:8787 NEXT_PUBLIC_CHAIN_ID=31337 \
 #       NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545 NEXT_PUBLIC_DEPLOYMENT_JSON="$(cat contracts/deployments/31337.json)" npm run dev
@@ -25,7 +25,15 @@ forge script script/LocalScanFixture.s.sol:LocalScanFixtureBuys --rpc-url "$RPC"
 echo "scan token: $(jq -r .token deployments/31337-scan-fixture.json)"
 
 cd "$ROOT/engine"
-export BASE_RPC_URL="$RPC" HISTORY_PROVIDER=rpc-scan EXTRA_EXCLUSIONS="$DEPLOYER"
+# Kin Scan: real Base mainnet tokens when BASE_RPC_URL is an Alchemy Base mainnet endpoint, else the local fixture token.
+if [ -n "${BASE_RPC_URL:-}" ]; then
+  export HISTORY_PROVIDER=${HISTORY_PROVIDER:-alchemy}
+  echo "scan: Base mainnet via BASE_RPC_URL"
+else
+  export BASE_RPC_URL="$RPC" HISTORY_PROVIDER=rpc-scan
+  echo "scan: local chain only (set BASE_RPC_URL to an Alchemy Base mainnet URL to scan real tokens)"
+fi
+export EXTRA_EXCLUSIONS="$DEPLOYER"
 export LAUNCH_RPC_URL="$RPC" LAUNCH_CHAIN_ID=31337 LAUNCH_HISTORY_PROVIDER=rpc-scan
 export SANDBOX_RPC_URL="$RPC" SANDBOX_RELAYER_KEY="$DEPLOYER_PRIVATE_KEY" SANDBOX_DEPLOYMENT="$ROOT/contracts/deployments/31337.json" SANDBOX_WINDOW_DELAY_SEC=3
 export PORT=${PORT:-8787}
@@ -36,5 +44,5 @@ for _ in $(seq 1 50); do curl -s "http://127.0.0.1:$PORT/health" >/dev/null && b
 API_URL="http://127.0.0.1:$PORT" RPC_URL="$RPC" ADMIN_KEY="$DEPLOYER_PRIVATE_KEY" \
   DEPLOYMENT="$ROOT/contracts/deployments/31337.json" bun run scripts/seed-local.ts
 echo "DATA_DIR=$DATA_DIR"
-echo "engine API on http://127.0.0.1:$PORT — ready"
+echo "engine API on http://127.0.0.1:$PORT: ready"
 wait

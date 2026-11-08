@@ -11,3 +11,6 @@ engine/out/
 node_modules/
 .DS_Store
 engine/data/runtime/
+
+# written by `next dev` on every run
+web/AGENTS.md

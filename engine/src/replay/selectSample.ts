@@ -9,7 +9,7 @@
  *
  * The output records the rule, the exact block range, how many events matched, and for every token the
  * transaction and block that created it. It fails (and writes nothing) if the range holds no creation
- * events — the sign of a wrong factory address or event signature — or fewer WETH-paired launches than N.
+ * events (the sign of a wrong factory address or event signature) or fewer WETH-paired launches than N.
  */
 import { renameSync, writeFileSync } from "node:fs";
 import { decodeEventLog, encodeEventTopics, getAddress, type Address, type Hex } from "viem";

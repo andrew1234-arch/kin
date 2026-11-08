@@ -22,7 +22,7 @@ export interface WalletProfile {
   nonce: number;
   /** Unix seconds of the first funding seen, if known. */
   firstFundedAt?: number;
-  /** Base Verify (onchain variant, Base Sepolia only) — set by the verify step. */
+  /** Base Verify (onchain variant, Base Sepolia only); set by the verify step. */
   verified?: boolean;
 }
 

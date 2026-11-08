@@ -100,4 +100,4 @@ cd "$ROOT/engine"
 SANDBOX_RPC_URL="${SANDBOX_RPC_URL:-$RPC}" SANDBOX_RELAYER_KEY="${SANDBOX_RELAYER_KEY:-$DEPLOYER_PRIVATE_KEY}" \
   SANDBOX_DEPLOYMENT="$ROOT/contracts/$SBX" \
   bun run src/sandbox/cli.ts | tee "$ROOT/reports/sandbox-${STAMP}.log" | tail -1
-echo "logs in reports/ — stamp ${STAMP}"
+echo "logs in reports/, stamp ${STAMP}"
