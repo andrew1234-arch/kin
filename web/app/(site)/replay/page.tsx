@@ -47,11 +47,16 @@ export default function ReplayPage() {
 
   return (
     <>
-      <h1>Replay report</h1>
-      <p className="lede">
-        Kin Scan run over a fixed sample of recent Base launches: how often early supply sat with multi-wallet entities,
-        and what Kin&apos;s caps would have done.
-      </p>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">Report · Base mainnet sample</p>
+          <h1>Replay report</h1>
+          <p className="lede">
+            Kin Scan run over a fixed sample of recent Base launches: how often early supply sat with multi-wallet entities,
+            and what Kin&apos;s caps would have done.
+          </p>
+        </div>
+      </header>
       {state === "loading" && <p className="muted">Loading…</p>}
       {state === "none" && (
         <Notice>
@@ -79,14 +84,14 @@ function ReportView({ r }: { r: ReplayReport }) {
         <Stat label="launches scanned" value={a.launchesScanned} />
         <Stat
           label="had a multi-wallet entity among early buyers"
-          value={a.launchesWithMultiWalletEntityPct === null ? "—" : `${a.launchesWithMultiWalletEntityPct}%`}
+          value={a.launchesWithMultiWalletEntityPct === null ? "n/a" : `${a.launchesWithMultiWalletEntityPct}%`}
           sub={`${a.launchesWithMultiWalletEntity} of ${a.launchesScanned}`}
           tone="bad"
         />
         <Stat label="median share of early buys held by them" value={pct(a.medianMultiWalletShareOfEarlyBps)} />
         <Stat
           label="of early ETH Kin would have rejected"
-          value={a.kinCounterfactual.blockedPct === null ? "—" : `${a.kinCounterfactual.blockedPct}%`}
+          value={a.kinCounterfactual.blockedPct === null ? "n/a" : `${a.kinCounterfactual.blockedPct}%`}
           sub={`${a.kinCounterfactual.blockedEth} of ${a.kinCounterfactual.attemptedEth} ETH`}
           tone="accent"
         />
@@ -148,9 +153,9 @@ function ReportView({ r }: { r: ReplayReport }) {
                     <Addr address={t.address} explorer={SCAN_EXPLORER} /> {s?.symbol && <span className="muted">${s.symbol}</span>}
                   </td>
                   <td className="small muted">{t.source}</td>
-                  <td className="num">{s ? s.summary.earlyBuyers : "—"}</td>
-                  <td className="num">{s ? s.summary.multiWalletEntities : f ? "failed" : "—"}</td>
-                  <td className="num">{s ? pct(s.summary.multiWalletShareOfEarlyBps) : "—"}</td>
+                  <td className="num">{s ? s.summary.earlyBuyers : "n/a"}</td>
+                  <td className="num">{s ? s.summary.multiWalletEntities : f ? "failed" : "n/a"}</td>
+                  <td className="num">{s ? pct(s.summary.multiWalletShareOfEarlyBps) : "n/a"}</td>
                 </tr>
               );
             })}

@@ -21,11 +21,21 @@ export const LAUNCH_EXPLORER = (process.env.NEXT_PUBLIC_EXPLORER_URL ?? "").repl
 /** Block explorer for Base mainnet, used by Kin Scan links. */
 export const SCAN_EXPLORER = (process.env.NEXT_PUBLIC_SCAN_EXPLORER_URL ?? "").replace(/\/$/, "");
 
+/** Deploy-time limits the KinHook enforces (contracts/script/DeployKin.s.sol), when the deployment file has them. */
+export interface HookLimits {
+  minReviewPeriod: number;
+  minWindow: number;
+  maxWindow: number;
+  maxLock: number;
+  maxCreatorBps: number;
+}
+
 export interface Deployment {
   kinRouter: Address;
   kinHook: Address;
   kinVault: Address;
   factory: Address;
+  limits: HookLimits | null;
 }
 
 function parseDeployment(): Deployment | null {
@@ -38,6 +48,16 @@ function parseDeployment(): Deployment | null {
       kinHook: getAddress(d.kinHook),
       kinVault: getAddress(d.kinVault),
       factory: getAddress(d.factory),
+      limits:
+        d.minWindow !== undefined
+          ? {
+              minReviewPeriod: Number(d.minReviewPeriod ?? 0),
+              minWindow: Number(d.minWindow),
+              maxWindow: Number(d.maxWindow),
+              maxLock: Number(d.maxLock),
+              maxCreatorBps: Number(d.maxCreatorBps ?? 0),
+            }
+          : null,
     };
   } catch {
     return null;

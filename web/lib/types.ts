@@ -164,6 +164,15 @@ export interface WalletStatus {
 
 export type Phase = "registration" | "building" | "dispute" | "window" | "locked" | "claimable";
 
+export const PHASE_LABEL: Record<Phase, string> = {
+  registration: "Registration open",
+  building: "Building allowlist",
+  dispute: "Dispute period",
+  window: "Window open",
+  locked: "Vault locked",
+  claimable: "Open trading",
+};
+
 export function phaseOf(l: LaunchView, now: number): Phase {
   if (!l.onchain) return now < l.registrationClosesAt && !l.allowlist ? "registration" : "building";
   if (now < l.onchain.windowStart) return "dispute";

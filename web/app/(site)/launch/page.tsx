@@ -3,47 +3,81 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Notice } from "@/components/bits";
+import { LaunchCard } from "@/components/LaunchCard";
 import { api } from "@/lib/api";
-import { eth } from "@/lib/format";
-import { phaseOf, type LaunchView } from "@/lib/types";
+import { phaseOf, type LaunchView, type Phase } from "@/lib/types";
+import { useNow } from "@/lib/useNow";
 
-const PHASE_LABEL = {
-  registration: "Registration open",
-  building: "Building allowlist",
-  dispute: "Dispute period",
-  window: "Window open",
-  locked: "Vault locked",
-  claimable: "Open trading",
-} as const;
+const FILTERS: { key: string; label: string; phases: Phase[] }[] = [
+  { key: "all", label: "All", phases: [] },
+  { key: "open", label: "Open now", phases: ["registration", "window"] },
+  { key: "soon", label: "Upcoming", phases: ["building", "dispute"] },
+  { key: "done", label: "Ended", phases: ["locked", "claimable"] },
+];
 
 export default function Launches() {
   const [list, setList] = useState<LaunchView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("all");
+  const now = useNow();
   useEffect(() => {
-    api<LaunchView[]>("/launches").then(setList).catch((e) => setError(e.message));
+    api<LaunchView[]>("/launches")
+      .then((l) => setList([...l].sort((a, b) => b.createdAt - a.createdAt)))
+      .catch((e) => setError(e.message));
   }, []);
-  const now = Math.floor(Date.now() / 1000);
+  const f = FILTERS.find((x) => x.key === filter)!;
+  const shown = list && now ? list.filter((l) => !f.phases.length || f.phases.includes(phaseOf(l, now))) : list;
+
   return (
     <>
-      <h1>Launches</h1>
-      <p className="lede">Kin launches on Base Sepolia. Register, check your tier and cap, read the evidence, dispute, buy, claim.</p>
-      {error && <Notice tone="error">{error}</Notice>}
-      {list && list.length === 0 && <Notice>No launches yet.</Notice>}
-      <div className="grid grid-2" style={{ marginTop: 20 }}>
-        {list?.map((l) => (
-          <Link key={l.slug} href={`/launch/${l.slug}`} className="card" style={{ color: "inherit", textDecoration: "none" }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <h3 style={{ margin: 0 }}>
-                {l.name} <span className="muted">${l.symbol}</span>
-              </h3>
-              <span className="pill pill-accent">{PHASE_LABEL[phaseOf(l, now)]}</span>
-            </div>
-            <p className="small muted" style={{ marginTop: 8 }}>
-              {l.registrations} registered · cap {eth(l.tiers.capWei)} ETH per entity · fresh pool {eth(l.tiers.freshPoolCapWei)} ETH
-            </p>
-          </Link>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">Launches</p>
+          <h1>Fair launches on Kin</h1>
+          <p className="lede">
+            Register a wallet, see your limit, buy in the window. Wallets funded by the same source share one limit.
+          </p>
+        </div>
+        <Link className="btn btn-primary" href="/launch/new">
+          Launch with Kin
+        </Link>
+      </header>
+
+      <div className="filters" role="tablist" aria-label="Filter launches">
+        {FILTERS.map((x) => (
+          <button key={x.key} role="tab" aria-selected={filter === x.key} className="filter" onClick={() => setFilter(x.key)}>
+            {x.label}
+            {list && now && (
+              <span className="filter-n">{list.filter((l) => !x.phases.length || x.phases.includes(phaseOf(l, now))).length}</span>
+            )}
+          </button>
         ))}
       </div>
+
+      {error && <Notice tone="error">{error}</Notice>}
+      {!list && !error && (
+        <div className="launch-grid" aria-busy="true">
+          <div className="launch-card skeleton" />
+          <div className="launch-card skeleton" />
+        </div>
+      )}
+      {list && list.length === 0 && (
+        <div className="empty">
+          <h2>No launches yet</h2>
+          <p className="muted">The first launch on this engine starts here.</p>
+          <Link className="btn btn-primary" href="/launch/new">
+            Launch with Kin
+          </Link>
+        </div>
+      )}
+      {shown && shown.length > 0 && (
+        <div className="launch-grid">
+          {shown.map((l) => (
+            <LaunchCard key={l.slug} launch={l} />
+          ))}
+        </div>
+      )}
+      {list && list.length > 0 && shown?.length === 0 && <p className="muted">No launches in this group right now.</p>}
     </>
   );
 }

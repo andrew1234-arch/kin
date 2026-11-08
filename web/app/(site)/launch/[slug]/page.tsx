@@ -6,11 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 import { keccak256, parseEther, toBytes, type Hex } from "viem";
 import { useAccount, useChainId, usePublicClient, useReadContract, useSignMessage, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { Notice, Stat, Tx } from "@/components/bits";
+import { Source } from "@/components/Source";
 import { kinHookAbi, kinRouterAbi, kinVaultAbi } from "@/lib/abi";
 import { api, ApiError, launchMirror, post, walletFromMirror } from "@/lib/api";
 import { API_URL, DEPLOYMENT, LAUNCH_CHAIN_ID, LAUNCH_EXPLORER, SLIPPAGE_BPS } from "@/lib/config";
 import { duration, eth, tokens } from "@/lib/format";
-import { phaseOf, type LaunchView, type Phase, type WalletStatus } from "@/lib/types";
+import { PHASE_LABEL, phaseOf, type LaunchView, type Phase, type WalletStatus } from "@/lib/types";
 
 const PHASES: { key: Phase[]; label: string }[] = [
   { key: ["registration", "building"], label: "Register" },
@@ -52,31 +53,61 @@ export default function LaunchPage() {
     };
   }, [load]);
 
-  if (error) return <Notice tone="error">{error}</Notice>;
-  if (!launch) return <p className="muted">Loading…</p>;
+  if (error)
+    return (
+      <div className="empty">
+        <h2>Launch not available</h2>
+        <Notice tone="error">{error}</Notice>
+        <Link className="btn btn-ghost" href="/launch">
+          All launches
+        </Link>
+      </div>
+    );
+  if (!launch)
+    return (
+      <div aria-busy="true">
+        <div className="launch-head skeleton" style={{ height: 120 }} />
+      </div>
+    );
   const phase = phaseOf(launch, now);
   const phaseIdx = PHASES.findIndex((p) => p.key.includes(phase));
   const o = launch.onchain;
 
   return (
     <>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>
-          {launch.name} <span className="muted">${launch.symbol}</span>
-        </h1>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <Link href="/launch">Launches</Link>
+        <span aria-hidden="true">/</span>
+        <span>{launch.name}</span>
+      </nav>
+      <header className="launch-head">
+        <span className="token-badge token-badge-lg" aria-hidden="true">
+          {launch.symbol.slice(0, 2)}
+        </span>
+        <div className="launch-head-id">
+          <h1>
+            {launch.name} <span className="faint">${launch.symbol}</span>
+          </h1>
+          <div className="launch-head-meta">
+            <span className={`phase-pill${phase === "registration" || phase === "window" ? " phase-pill-live" : ""}`}>{PHASE_LABEL[phase]}</span>
+            <Source chainId={launch.chainId} />
+          </div>
+        </div>
         {o && now >= o.windowEnd && (
           <Link className="btn btn-ghost btn-sm" href={`/receipt/${launch.slug}`}>
-            Fairness Receipt →
+            Fairness Receipt
           </Link>
         )}
-      </div>
-      <div className="phases" aria-label="Launch phase">
+      </header>
+
+      <ol className="stepper" aria-label="Launch phase">
         {PHASES.map((p, i) => (
-          <div key={p.label} className={`phase ${i === phaseIdx ? "phase-now" : i < phaseIdx ? "phase-done" : ""}`}>
+          <li key={p.label} className={i === phaseIdx ? "is-now" : i < phaseIdx ? "is-done" : undefined} aria-current={i === phaseIdx ? "step" : undefined}>
+            <span className="stepper-dot" aria-hidden="true" />
             {p.label}
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
       <PhaseLine launch={launch} phase={phase} now={now} />
       {fromMirror && (
         <Notice tone="warn">The Kin engine is unreachable; showing the launch&apos;s published copy. Buying and claiming still work.</Notice>
@@ -84,7 +115,7 @@ export default function LaunchPage() {
 
       <div className="stats">
         <Stat label="wallets registered" value={launch.registrations} />
-        <Stat label="cap per entity" value={`${eth(launch.tiers.capWei)} ETH`} sub="linked wallets share one" />
+        <Stat label="limit per entity" value={`${eth(launch.tiers.capWei)} ETH`} sub="linked wallets share one" />
         <Stat label="fresh-wallet pool" value={`${eth(launch.tiers.freshPoolCapWei)} ETH`} sub="split evenly between fresh wallets" />
         {launch.baseVerify && BigInt(launch.tiers.verifiedCapWei) > BigInt(launch.tiers.capWei) && (
           <Stat
@@ -103,7 +134,7 @@ export default function LaunchPage() {
         )}
       </div>
 
-      <div className="grid grid-2">
+      <div className="launch-body">
         <YourWallet launch={launch} phase={phase} now={now} onChange={load} />
         <Evidence launch={launch} />
       </div>
@@ -123,7 +154,7 @@ function PhaseLine({ launch, phase, now }: { launch: LaunchView; phase: Phase; n
     locked: o ? `Window closed; trading is open to everyone. Window buys unlock in ${duration(o.windowEnd + o.lockDuration - now)}.` : "",
     claimable: "Trading is open to everyone and window buys can be claimed.",
   }[phase];
-  return <p className="muted">{text}</p>;
+  return <p className="phase-line">{text}</p>;
 }
 
 // ------------------------------------------------------------------ your wallet
@@ -216,9 +247,16 @@ function YourWallet({ launch, phase, now, onChange }: { launch: LaunchView; phas
           )}
         </>
       ) : phase === "registration" ? (
-        <button className="btn" onClick={register} disabled={busy}>
-          {busy ? "Waiting for signature…" : "Register (free signature)"}
-        </button>
+        <>
+          <button className="btn btn-primary" onClick={register} disabled={busy}>
+            {busy ? "Waiting for signature…" : "Register (free signature)"}
+          </button>
+          {launch.minBalanceWei && BigInt(launch.minBalanceWei) > 0n && (
+            <p className="small faint" style={{ marginTop: 10 }}>
+              The wallet needs at least {eth(launch.minBalanceWei)} ETH to register. Nothing is spent.
+            </p>
+          )}
+        </>
       ) : (
         <p className="small muted">This wallet did not register. After the window, anyone can trade.</p>
       )}

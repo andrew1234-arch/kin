@@ -157,7 +157,7 @@ function ScanView({ r }: { r: ScanResult }) {
                   <span className={`pill pill-${b.tier}`}>{b.tier === "fresh" ? `fresh pool` : b.tier}</span>
                 </td>
                 <td className="mono small">{b.entity.startsWith("W:") ? "own" : b.entity}</td>
-                <td className="num">{BigInt(b.ethSpentWei) > 0n ? eth(b.ethSpentWei) : "—"}</td>
+                <td className="num">{BigInt(b.ethSpentWei) > 0n ? eth(b.ethSpentWei) : "n/a"}</td>
                 <td className="num">{tokens(b.tokens, r.decimals ?? 18)}</td>
                 <td>
                   <Tx hash={b.firstBuyTx} explorer={SCAN_EXPLORER} label={`block ${b.firstBuyBlock}`} />

@@ -15,7 +15,7 @@ export function tokens(amount: string | bigint, decimals = 18): string {
 }
 
 export const pct = (bps: number | null | undefined, digits = 1) =>
-  bps === null || bps === undefined ? "—" : `${(bps / 100).toFixed(digits)}%`;
+  bps === null || bps === undefined ? "n/a" : `${(bps / 100).toFixed(digits)}%`;
 
 export function duration(sec: number): string {
   if (sec < 0) sec = 0;

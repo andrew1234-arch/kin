@@ -93,7 +93,7 @@ export function Receipt({ slug, compact = false }: { slug: string; compact?: boo
           </div>
         )}
         <div className="stat">
-          <div className="stat-value">{r.totalSupply > 0n ? pct(Number((r.creatorAllocation * 10_000n) / r.totalSupply)) : "—"}</div>
+          <div className="stat-value">{r.totalSupply > 0n ? pct(Number((r.creatorAllocation * 10_000n) / r.totalSupply)) : "n/a"}</div>
           <div className="stat-label">of supply kept by the creator</div>
           <div className="stat-sub">outside every cap</div>
         </div>
