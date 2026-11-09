@@ -97,7 +97,7 @@ export function SandboxClient() {
   const funded = has("funded");
   const linked = has("limits");
   const kinLanded = view.kin.filter((x) => x?.status === "landed").length;
-  const capBuys = r?.expectedKinMax ?? 10;
+  const capBuys = r?.expectedKinMax ?? 1;
   const flowBuy = (x: Slot): FlowBuy =>
     !x ? "idle" : x.status === "landed" ? "landed" : x.status === "rejected" ? "blocked" : x.status === "pending" ? "pending" : "idle";
   const caption = running
@@ -143,11 +143,17 @@ export function SandboxClient() {
 
       {r && (
         <div className="card" style={{ marginTop: 14 }}>
-          <h3>Result</h3>
+          <h3>{r.bundleSize} wallets, one person&apos;s allowance</h3>
           <p>
-            The bundle landed <strong>{r.kin.landed} of {r.bundleSize}</strong> buys on the Kin pool (its one limit allows{" "}
-            {r.expectedKinMax} × {eth(r.perWalletWei, 6)} ETH) and <strong>{r.plain.landed} of {r.bundleSize}</strong> on the
-            plain pool.
+            Each wallet tried to buy {eth(r.perWalletWei, 6)} ETH and the group&apos;s one limit is {eth(r.entityCapWei, 6)} ETH. Kin let{" "}
+            <strong>
+              {r.kin.landed} of {r.bundleSize}
+            </strong>{" "}
+            buys through; the normal pool let{" "}
+            <strong>
+              {r.plain.landed} of {r.bundleSize}
+            </strong>{" "}
+            through.
           </p>
           {r.kin.rejectReason && /EntityCap/i.test(r.kin.rejectReason) && (
             <p className="small muted break">

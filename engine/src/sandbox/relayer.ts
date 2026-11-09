@@ -1,3 +1,4 @@
+import { chainTransport } from "../data/transport";
 import { withAdminLock } from "../adminLock";
 import { launchParams } from "../launchParams";
 import {
@@ -6,7 +7,6 @@ import {
   decodeErrorResult,
   defineChain,
   formatEther,
-  http,
   parseAbi,
   parseEventLogs,
   type Address,
@@ -89,7 +89,7 @@ export function chainFor(chainId: number, rpcUrl: string): Chain {
 export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => void): Promise<SandboxResult> {
   const t0 = Date.now();
   const chain = chainFor(cfg.chainId, cfg.rpcUrl);
-  const transport = http(cfg.rpcUrl);
+  const transport = chainTransport(cfg.rpcUrl, cfg.chainId);
   const pub = createPublicClient({ chain, transport }) as PublicClient;
   const relayer = createWalletClient({ chain, transport, account: privateKeyToAccount(cfg.relayerKey) });
 
@@ -344,9 +344,10 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
 }
 
 async function sweep(pub: PublicClient, keys: Hex[], chain: Chain, rpcUrl: string, to: Address, maxFee: bigint) {
+  const transport = chainTransport(rpcUrl, chain.id);
   await Promise.allSettled(
     keys.map(async (k) => {
-      const w = createWalletClient({ chain, transport: http(rpcUrl), account: privateKeyToAccount(k) });
+      const w = createWalletClient({ chain, transport, account: privateKeyToAccount(k) });
       const bal = await pub.getBalance({ address: w.account.address });
       const cost = TRANSFER_GAS * maxFee;
       // Leave twice the L2 gas behind: on Base (OP stack) the L1 data fee is charged on top of gas × price, so

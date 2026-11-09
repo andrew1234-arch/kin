@@ -1,6 +1,7 @@
+import { chainTransport } from "./data/transport";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createPublicClient, createWalletClient, formatEther, getAddress, http, isAddress, parseEther, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, formatEther, getAddress, isAddress, parseEther, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { envNum, envStr } from "./env";
 import { dataDir } from "./paths";
@@ -59,8 +60,8 @@ export class Faucet {
   ) {
     this.account = privateKeyToAccount(o.key);
     const chain = chainFor(o.chainId, o.rpcUrl);
-    this.pub = createPublicClient({ chain, transport: http(o.rpcUrl) });
-    this.wallet = createWalletClient({ chain, transport: http(o.rpcUrl), account: this.account });
+    this.pub = createPublicClient({ chain, transport: chainTransport(o.rpcUrl, o.chainId) });
+    this.wallet = createWalletClient({ chain, transport: chainTransport(o.rpcUrl, o.chainId), account: this.account });
     if (existsSync(o.file)) {
       for (const line of readFileSync(o.file, "utf8").split("\n")) if (line.trim()) this.drips.push(JSON.parse(line) as Drip);
     } else {

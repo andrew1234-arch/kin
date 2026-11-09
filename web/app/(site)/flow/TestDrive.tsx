@@ -68,7 +68,7 @@ const STEPS: { key: StepKey; title: string }[] = [
   { key: "fund", title: "Get test ETH from the faucet" },
   { key: "split", title: "Send some of it to the other 2 wallets" },
   { key: "limits", title: "Kin checks where each wallet's ETH came from" },
-  { key: "buy", title: "All 3 wallets buy" },
+  { key: "buy", title: "All 3 wallets try to buy the full limit" },
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -91,7 +91,7 @@ function isCapExceeded(e: unknown): boolean {
 }
 
 /** Test ETH the first wallet needs for a run in a launch with this limit: three buys of half the limit, plus gas. */
-const driveCost = (capWei: string) => 3n * (BigInt(capWei) / 2n) + 3n * PAD;
+const driveCost = (capWei: string) => 3n * BigInt(capWei) + 3n * PAD;
 
 /**
  * The open instant launch with the most time left whose run one faucet drip covers (demo launches first);
@@ -190,7 +190,7 @@ export function TestDrive() {
 
   const addr = useMemo(() => (tw ? { main: addressOf(tw.keys.main), a: addressOf(tw.keys.a), b: addressOf(tw.keys.b) } : null), [tw]);
   const cap = launch ? BigInt(launch.tiers.capWei) : 0n;
-  const unit = cap / 2n;
+  const unit = cap;
   const sameLaunch = !!launch && progress?.slug === launch.slug;
   const permits = (sameLaunch && progress?.permits) || {};
   const buys = (sameLaunch && progress?.buys) || {};
@@ -225,7 +225,8 @@ export function TestDrive() {
     if (!launch || !o || !DEPLOYMENT) return;
     const L = launch;
     const O = o;
-    const u = BigInt(L.tiers.capWei) / 2n;
+    // Every wallet tries to buy the whole limit, as a bundler would.
+    const u = BigInt(L.tiers.capWei);
     const need = 3n * u + 3n * PAD;
     let step: StepKey = "wallets";
     setErr(null);
@@ -503,16 +504,21 @@ export function TestDrive() {
         </div>
         {allDone ? (
           <div className="td-verdict">
-            <h2>
-              {blocked > 0 ? `Kin blocked ${blocked} of 3 buys.` : "All 3 buys went through."}
-              {plainLanded !== null && blocked > 0 && <span className="muted"> Without Kin, {plainLanded} of 3 go through.</span>}
-            </h2>
-            <p className="muted">
-              {blocked > 0
-                ? `The three wallets share a funder, so together they could buy ${eth(cap, 6)} ETH, not ${eth(3n * unit, 6)}.`
-                : "Kin didn't link these wallets, so each had its own limit."}
-              {spent !== null && ` Recorded onchain: ${eth(spent, 6)} ETH.`}
-            </p>
+            <h2>{blocked > 0 ? "Three wallets, one person's allowance." : "All 3 buys went through."}</h2>
+            {blocked > 0 ? (
+              <>
+                <p className="td-verdict-line">
+                  Kin let them buy <strong>{eth(spent ?? cap, 6)} ETH</strong> together, not {eth(3n * unit, 6)}. It refused {blocked} of 3 buys
+                  {plainLanded !== null && <>; without Kin, {plainLanded} of 3 go through</>}.
+                </p>
+                <p className="muted small">
+                  The wallets share a funder, so the pool counts them as one buyer with one {eth(cap, 6)} ETH limit.
+                  {spent !== null && ` Recorded onchain for the group: ${eth(spent, 6)} ETH.`}
+                </p>
+              </>
+            ) : (
+              <p className="muted">Kin didn&apos;t link these wallets, so each had its own limit.</p>
+            )}
             {o && (
               <p className="small faint">
                 Bought tokens unlock in {duration(Math.max(0, o.windowEnd + o.lockDuration - now))}.{" "}

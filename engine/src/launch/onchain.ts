@@ -1,10 +1,10 @@
+import { chainTransport } from "../data/transport";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createPublicClient,
   createWalletClient,
   getAddress,
-  http,
   keccak256,
   parseEventLogs,
   toBytes,
@@ -28,8 +28,8 @@ export function adminClients(opts: { rpcUrl: string; chainId: number; adminKey: 
   const dep = JSON.parse(readFileSync(opts.deploymentPath, "utf8"));
   const chain = chainFor(opts.chainId, opts.rpcUrl);
   return {
-    pub: createPublicClient({ chain, transport: http(opts.rpcUrl) }) as PublicClient,
-    wallet: createWalletClient({ chain, transport: http(opts.rpcUrl), account: privateKeyToAccount(opts.adminKey) }),
+    pub: createPublicClient({ chain, transport: chainTransport(opts.rpcUrl, opts.chainId) }) as PublicClient,
+    wallet: createWalletClient({ chain, transport: chainTransport(opts.rpcUrl, opts.chainId), account: privateKeyToAccount(opts.adminKey) }),
     factory: getAddress(dep.factory) as Address,
     hook: getAddress(dep.kinHook) as Address,
     /** The hook's minimum review period (seconds), from the deployment file; 0 if it doesn't record one. */

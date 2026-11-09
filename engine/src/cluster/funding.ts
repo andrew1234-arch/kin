@@ -14,9 +14,16 @@ export interface TraceOptions {
    * contract: pools and routers send tokens to every swapper and would link unrelated wallets.
    */
   fundingTokens?: Address[];
-  /** Needed for `fundingTokens`: tells contracts from wallets (eth_getCode). */
+  /** Needed for `fundingTokens` and service detection: tells contracts from wallets (eth_getCode). */
   rpc?: Rpc;
+  /**
+   * Funders with at least this many sent transactions are public services (exchange hot wallets, public faucets),
+   * and so are contracts: like the excluded list, their payments link no one. Needs `rpc`; 0 turns it off.
+   */
+  serviceNonce?: number;
 }
+
+export const DEFAULT_SERVICE_NONCE = 10_000;
 
 /**
  * Collect funding edges for a set of wallets: hop 1 (who funded each wallet before `beforeBlock`, native ETH and
@@ -33,7 +40,8 @@ export async function traceFunding(
   const floor0 = (b: bigint) => (b < 0n ? 0n : b);
   const tokens = opts.fundingTokens ?? [];
   const isWallet = walletCheck(opts.rpc);
-  const edges: FundingEdge[] = [];
+  const isService = serviceCheck(opts.rpc, opts.serviceNonce ?? DEFAULT_SERVICE_NONCE);
+  let edges: FundingEdge[] = [];
   const lastFundedAt = new Map<string, number>();
   const firstFundedAt = new Map<string, number>();
 
@@ -77,13 +85,47 @@ export async function traceFunding(
     }
   });
 
+  // Funders that are services, not people: their payments link no one, and they aren't expanded to hop 2.
+  const services = new Set<string>();
+  await Promise.all([...funderFirst.keys()].map(async (f) => (await isService(f)) && services.add(f)));
+  for (const f of services) funderFirst.delete(f);
+
   if (opts.maxHops === 2) {
     const hop2 = await Promise.all(
       [...funderFirst].map(([f, bn]) => incoming(getAddress(f), floor0(bn - opts.windowBlocks), bn, false)),
     );
+    // Only a source that paid two or more funders can link anyone, so only those need checking.
+    const paid = new Map<string, Set<string>>();
+    hop2.forEach((list) =>
+      list.forEach((t) => {
+        const k = t.from.toLowerCase();
+        paid.set(k, (paid.get(k) ?? new Set()).add(t.to.toLowerCase()));
+      }),
+    );
+    await Promise.all([...paid].filter(([, to]) => to.size > 1).map(async ([k]) => (await isService(k)) && services.add(k)));
     hop2.forEach((list) => list.forEach((t) => edges.push({ ...t, hop: 2 })));
   }
+  if (services.size) edges = edges.filter((e) => !services.has(e.from.toLowerCase()));
   return { edges, lastFundedAt, firstFundedAt };
+}
+
+/** A contract (not a 7702-delegated EOA), or a wallet that has sent at least `minNonce` transactions. */
+function serviceCheck(rpc: Rpc | undefined, minNonce: number) {
+  const cache = new Map<string, Promise<boolean>>();
+  return (a: string): Promise<boolean> => {
+    if (!rpc || minNonce <= 0) return Promise.resolve(false);
+    const k = a.toLowerCase();
+    let p = cache.get(k);
+    if (!p) {
+      p = (async () => {
+        const code = await rpc.call<Hex>("eth_getCode", [k, "latest"]);
+        if (code !== "0x" && !code.startsWith("0xef0100")) return true;
+        return BigInt(await rpc.call<Hex>("eth_getTransactionCount", [k, "latest"])) >= BigInt(minNonce);
+      })();
+      cache.set(k, p);
+    }
+    return p;
+  };
 }
 
 /** EOAs (including EIP-7702 delegated EOAs, code 0xef0100…) are wallets; any other code is a contract. */

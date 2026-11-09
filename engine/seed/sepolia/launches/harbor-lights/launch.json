@@ -1,0 +1,47 @@
+{
+  "slug": "harbor-lights",
+  "chainId": 84532,
+  "name": "Harbor Lights",
+  "symbol": "HRBR",
+  "mode": "instant",
+  "public": true,
+  "registrationClosesAt": 1794239576,
+  "tiers": {
+    "capWei": "1000000000000000",
+    "freshPoolCapWei": "1000000000000000",
+    "verifiedCapWei": "1000000000000000",
+    "freshMaxNonce": 0,
+    "freshMaxAgeHours": 168
+  },
+  "window": {
+    "delayAfterBuildSec": 0,
+    "lengthSec": 3600,
+    "lockSec": 600
+  },
+  "createdAt": 1794239576,
+  "verifications": [],
+  "disputes": [],
+  "overrides": [],
+  "allowlist": null,
+  "onchain": {
+    "poolId": "0x3884d8c7db74a541519bd7f406590df0fca440594205d231f2e294591938d4b4",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0xa9608c885B4f6e34CAFD43E79108eF7a8A50dB9B",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0"
+    },
+    "token": "0xa9608c885B4f6e34CAFD43E79108eF7a8A50dB9B",
+    "launchTx": "0x501a62bcf999441331bd64ac264b5cfccef944f9b2f6c0b863fa04d078b9de16",
+    "windowStart": 1794241498,
+    "windowEnd": 1794245098,
+    "lockDuration": 600,
+    "rootVersion": 0
+  },
+  "permits": [],
+  "instant": {
+    "policyJson": "{\"launch\":{\"chainId\":84532,\"slug\":\"harbor-lights\"},\"method\":{\"exclusions\":{\"commit\":\"d9b21aefeded56f7fce7208d6fa173d128526c1b\",\"count\":2340,\"extra\":[\"0xf76c1dbbb621315a30f0b7f6c20e2324371a46b3\"],\"file\":\"data/csv/accounts.csv\",\"license\":\"MIT (Copyright (c) 2022 Dawson Botsford)\",\"repo\":\"https://github.com/dawsbot/eth-labels\"},\"fundingTokens\":[],\"fundingWindowHours\":\"whole history\",\"heuristic\":\"weighted links (Nuno engine port): wallet funds wallet 1.0; same hop-1 funder within 24 h 1.0; shared funding ancestor within 2 hops 0.8; same-block early buy 0.5; merge at 1.0; exchanges excluded; hubs > 50 wallets ignored unless they pay like a farm; funding (native ETH, or a funding token sent by a wallet) traced within 2 hops when the wallet asks to buy\"},\"permitSigner\":\"0x5606da7e22630e960d75955Ce710622B322a9b16\",\"rules\":[\"No registration. A wallet's funding is traced when it asks to buy.\",\"A wallet linked by funding (2 hops, exchanges excluded) to an earlier buyer or its funders joins that entity and its cap.\",\"A fresh wallet (no history, or first funded within freshMaxAgeHours) joins the launch's shared fresh pool.\",\"Any other wallet is its own entity with the normal cap.\",\"Every assignment is public at /launches/<slug>/permits; each window buy's entity is in KinHook's WindowBuy event.\"],\"schema\":\"kin-instant-policy/1\",\"tiers\":{\"capWei\":\"1000000000000000\",\"freshMaxAgeHours\":168,\"freshMaxNonce\":0,\"freshPoolCapWei\":\"1000000000000000\"}}",
+    "evidenceHash": "0xd3ac2f19767ae468f0b9b83bf8058831eb56afa3071dfe299b3ee661a30b3453"
+  }
+}

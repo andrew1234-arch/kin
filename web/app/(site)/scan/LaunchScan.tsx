@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createPublicClient, http, type Hex } from "viem";
 import { Addr, Notice, Stat, Tx } from "@/components/bits";
@@ -9,8 +8,7 @@ import { kinHookAbi } from "@/lib/abi";
 import { api, ApiError } from "@/lib/api";
 import { API_URL, DEPLOYMENT, LAUNCH_EXPLORER, LAUNCH_RPC_URL, launchChain } from "@/lib/config";
 import { eth, short } from "@/lib/format";
-import { phaseLabel, phaseOf, type LaunchView } from "@/lib/types";
-import { useNow } from "@/lib/useNow";
+import type { LaunchView } from "@/lib/types";
 
 interface Assignment {
   wallet: string;
@@ -37,33 +35,13 @@ const client = createPublicClient({ chain: launchChain, transport: http(LAUNCH_R
  * Kin Scan for launches on Kin: every wallet that got a limit, grouped into the buyers Kin sees, with each buyer's
  * spend read from the hook. Everything here is public: the engine's assignments and the pool's own records.
  */
-export function LaunchScan() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const path = usePathname();
-  const now = useNow();
-  const [launches, setLaunches] = useState<LaunchView[] | null>(null);
+export function LaunchScan({ launch }: { launch: LaunchView }) {
   const [err, setErr] = useState<string | null>(null);
   const [rows, setRows] = useState<Assignment[] | null>(null);
   const [spent, setSpent] = useState<Record<string, bigint>>({});
 
   useEffect(() => {
-    api<LaunchView[]>("/launches")
-      .then((l) => setLaunches(l.filter((x) => x.mode === "instant" && x.onchain)))
-      .catch((e: ApiError) => setErr(e.message));
-  }, []);
-
-  const picked = params.get("launch");
-  const launch = useMemo(() => {
-    if (!launches?.length) return null;
-    return (
-      launches.find((l) => l.slug === picked) ??
-      [...launches].sort((a, b) => Number((b.instant?.wallets ?? 0) > 0) - Number((a.instant?.wallets ?? 0) > 0) || b.createdAt - a.createdAt)[0]!
-    );
-  }, [launches, picked]);
-
-  useEffect(() => {
-    if (!launch) return;
+    setErr(null);
     setRows(null);
     setSpent({});
     api<Assignment[]>(`/launches/${launch.slug}/permits`)
@@ -98,32 +76,21 @@ export function LaunchScan() {
   }, [rows, spent]);
 
   if (err) return <Notice tone="error">{err}</Notice>;
-  if (!launches) return <p className="muted">Loading Kin launches…</p>;
-  if (!launches.length || !launch) return <Notice>No Kin launches yet. <Link href="/launch/new">Launch the first one.</Link></Notice>;
 
   const multi = entities.filter((e) => e.members.length > 1);
   const linkedWallets = multi.reduce((t, e) => t + e.members.length, 0);
   const totalSpent = entities.reduce((t, e) => t + (e.spent ?? 0n), 0n);
   const full = entities.filter((e) => e.spent !== null && e.spent >= e.cap && e.cap > 0n).length;
   const byEntity = new Map(entities.map((e) => [e.id, e]));
-  const pick = (slug: string) => router.replace(`${path}?launch=${slug}`, { scroll: false });
 
   return (
     <div className="lscan">
-      <div className="lscan-picker" role="tablist" aria-label="Kin launches">
-        {launches.slice(0, 12).map((l) => (
-          <button key={l.slug} role="tab" aria-selected={l.slug === launch.slug} className="lscan-chip" onClick={() => pick(l.slug)}>
-            <strong>{l.name}</strong>
-            <span className="faint small">
-              ${l.symbol} · {now ? phaseLabel(l, phaseOf(l, now)) : ""} · {l.instant?.wallets ?? 0} wallet{l.instant?.wallets === 1 ? "" : "s"}
-            </span>
-          </button>
-        ))}
-      </div>
-
       <div className="row" style={{ justifyContent: "space-between", marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>
-          {launch.name} <span className="muted">${launch.symbol}</span>
+          {launch.name} <span className="muted">${launch.symbol}</span>{" "}
+          <span className="pill pill-accent" style={{ verticalAlign: "middle" }}>
+            Kin launch
+          </span>
         </h2>
         <span className="small">
           <Link href={`/launch/${launch.slug}`}>Open the launch</Link> ·{" "}

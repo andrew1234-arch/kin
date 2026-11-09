@@ -91,7 +91,9 @@ Launches run in one of two modes:
 | Everyone else | No funding link to another buyer | Their own full limit |
 
 Exchanges and bridges are left out of the trace on purpose, so two people who withdrew from the same exchange are
-not linked. Kin's test-ETH faucet is treated the same way.
+not linked. Kin's test-ETH faucet is treated the same way. Beyond the labelled list, any funder that is a contract or
+has sent 10,000 or more transactions (an exchange hot wallet, a public faucet) counts as a public service and links
+no one.
 
 ## What you can do on the site
 
@@ -100,7 +102,7 @@ not linked. Kin's test-ETH faucet is treated the same way.
 | **The flow** (`/flow`) | The whole mechanism, live. *Do it yourself*: one button creates three test wallets in your browser, funds them from Kin's faucet, splits the ETH like a bundler, asks Kin for limits and buys with all three in a real launch. A diagram fills in as each step happens, next to what a normal pool would have done with the same buys. *At scale*: one funder sends 20 wallets at a Kin pool and a normal pool at once. |
 | **Launch a token** (`/launch/new`) | Name, symbol, limit per buyer, window and lock. One click deploys the token and its Kin pool on Base Sepolia and opens the launch page to share. Free; the engine pays the test gas. |
 | **Launches** (`/launch`, `/launch/<slug>`) | Every launch: its phase, rules hash, limits, and a buy panel. Connect any wallet (or the built-in test wallet), get your limit, buy in the window, claim after the lock. |
-| **Kin Scan** (`/scan`) | Pick a Kin launch and see every wallet that got a limit, which ones Kin counted as one buyer, and how much of each shared limit was used, read from the hook. Bonus: paste any token on Base mainnet to see which of its early buyers shared a funder, and what Kin's limit would have done. |
+| **Kin Scan** (`/scan`) | One search for any token. A Kin launch (by token address or name) shows every wallet that got a limit, which ones Kin counted as one buyer, and how much of each shared limit was used, read from the hook. Any other token on Base mainnet shows its early buyers grouped by shared funder and what Kin's limit would have refused. |
 | **Profile** (`/me`) | Every launch a wallet has a limit in, its entity, what it bought, and a claim button once the lock ends. Also a "Get test ETH" button. |
 | **How it works** (`/how-it-works`) | The mechanism with diagrams. |
 
@@ -190,8 +192,12 @@ Allowlist-mode routes (register, allowlist, proofs, disputes, evidence) are list
 
 ## Trust model and limits
 
-What is enforced onchain: the window, the lock, the review period, and each entity's limit. A buy over the limit
-reverts in the pool, whatever the website does.
+What is enforced onchain: the window, the lock, the review period, and each entity's limit. The limit is checked
+inside the swap itself (the hook's `beforeSwap`), in the same transaction as the buy: a buy that would take an entity
+over its limit reverts in the pool, whatever the website does, and there is no gap between the check and the buy
+for a second wallet to slip through. Anyone can buy once the window opens; there is no allowlist or sign-up in
+instant mode. The site fetches the buyer's permit (Kin's signed "this wallet belongs to entity X") a moment before
+the buy, because a contract cannot read a wallet's funding history itself.
 
 What you trust Kin's engine for: deciding who is linked. In instant mode the hook accepts any permit signed by the
 launch's permit signer. That is why every permit is published with the transfers behind it, the rules file's hash
@@ -214,12 +220,12 @@ What Kin does not do, today:
 | Piece | State |
 |---|---|
 | Contracts | 53 tests pass (`cd contracts && forge test`), 12 of them for instant-launch permits. Deployed to Base Sepolia (addresses above) |
-| Engine | 59 tests pass (`cd engine && bun test`), including launch-backend and instant-launch integration tests on a local chain |
+| Engine | 61 tests pass (`cd engine && bun test`), including launch-backend and instant-launch integration tests on a local chain |
 | Instant launches on Base Sepolia | Live. Demo launches are kept open around the clock; launches created from the site deploy in about 6 seconds |
-| The flow, do it yourself | Verified end to end in a browser on Base Sepolia (9 Nov 2026): 3 wallets funded from one, linked into one entity, 2 buys landed, the 3rd reverted with `EntityCapExceeded`, 0.0003 ETH recorded by the hook |
-| The flow, at scale (sandbox) | Run on Base Sepolia: Kin pool 10 of 20 buys (the limit allows 10), plain pool 20 of 20. The refusal reason (`EntityCapExceeded`) verified on a local chain |
+| The flow, do it yourself | Verified end to end in a browser on Base Sepolia (9 Nov 2026, 42 s): 3 wallets funded from one, linked into one entity, each tried to buy the full 0.0001 ETH limit; 1 buy landed, 2 reverted with `EntityCapExceeded`, 0.0001 ETH recorded by the hook for the group. On a normal pool all 3 would land |
+| The flow, at scale (sandbox) | Run on Base Sepolia (9 Nov 2026): every wallet tries to buy the group's whole limit; Kin pool 1 of 20 buys, plain pool 20 of 20. The refused buys revert with `EntityCapExceeded(entity, 0.00002 ETH cap, 0.00004 ETH attempted)` |
 | Kin Scan for Kin launches | Live; reads the engine's public permits and the hook's `entitySpent` |
-| Kin Scan for Base mainnet tokens | Built and verified on a local chain; not yet verified on a real Base mainnet token |
+| Kin Scan for Base mainnet tokens | Verified on BRETT (9 Nov 2026): 50 early buyers, none sharing a funder once exchange hot wallets count as services; all 50 were new wallets. A first scan takes about 5 minutes on Alchemy's free plan (the engine backs off when rate limited) and is cached after |
 | Fairness Receipt page + embed | Built |
 | Replay (Kin's limits applied to past Clanker launches) | Built; **not yet computed**. No number in this repository describes real-world Base data until a job has computed it |
 | Base Verify tier (verified-human limit) | Built and tested against a local mock; needs a Base Verify key to go live |

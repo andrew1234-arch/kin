@@ -1,8 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { isAddress } from "viem";
 import { Addr, Notice, Stat, Tx } from "@/components/bits";
 import { ClusterMap } from "@/components/ClusterMap";
 import { api, ApiError } from "@/lib/api";
@@ -10,80 +8,68 @@ import { SCAN_EXPLORER } from "@/lib/config";
 import { duration, eth, pct, tokens } from "@/lib/format";
 import type { ScanResult } from "@/lib/types";
 
-export function ScanClient() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const path = usePathname();
-  const token = params.get("token") ?? "";
-  const cap = params.get("cap") ?? "";
-  const [input, setInput] = useState(token);
-  const [capInput, setCapInput] = useState(cap);
+/**
+ * Kin Scan for any token on Base mainnet: its early buyers grouped by shared funding, and what Kin's limit would have
+ * refused. A busy token's first scan can take minutes, so the engine answers "running" and this polls until it's done.
+ */
+export function TokenScan({ token, cap }: { token: string; cap?: string }) {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [, tick] = useState(0);
 
   useEffect(() => {
-    if (!token) return;
-    if (!isAddress(token)) {
-      setError("That is not a token address.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    let live = true;
     setResult(null);
+    setError(null);
+    setStartedAt(Date.now());
     const q = cap ? `?cap=${encodeURIComponent(cap)}` : "";
-    api<ScanResult>(`/scan/${token}${q}`)
-      .then(setResult)
-      .catch((e: ApiError) => setError(e.message))
-      .finally(() => setLoading(false));
+    (async () => {
+      for (;;) {
+        try {
+          const r = await api<ScanResult | { status: "running" }>(`/scan/${token}${q}`);
+          if (!live) return;
+          if ("status" in r) {
+            await new Promise((res) => setTimeout(res, 2500));
+            if (!live) return;
+            continue;
+          }
+          setResult(r);
+        } catch (e) {
+          if (live) setError((e as ApiError).message);
+        }
+        return;
+      }
+    })().finally(() => live && setStartedAt(null));
+    return () => {
+      live = false;
+    };
   }, [token, cap]);
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = new URLSearchParams({ token: input.trim() });
-    if (capInput.trim()) q.set("cap", capInput.trim());
-    router.push(`${path}?${q.toString()}`);
-  };
+  useEffect(() => {
+    if (startedAt === null) return;
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
 
-  return (
-    <>
-      <form onSubmit={submit} className="card" style={{ marginTop: 22 }}>
-        <div className="row">
-          <input
-            aria-label="Token address"
-            placeholder="0x… token address on Base"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="mono"
-            spellCheck={false}
-          />
-          <button className="btn" disabled={loading || !input.trim()}>
-            {loading ? "Scanning…" : "Scan"}
-          </button>
+  if (error) return <Notice tone="error">{error}</Notice>;
+  if (!result) {
+    const secs = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
+    return (
+      <div className="card scan-wait" aria-live="polite">
+        <span className="scan-wait-dot" aria-hidden="true" />
+        <div>
+          <strong>Reading this token&apos;s first buyers and tracing who funded each one{secs > 2 ? ` · ${secs} s` : ""}</strong>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>
+            {secs < 25
+              ? "Base mainnet, two funding hops back."
+              : "A busy token's first scan can take a few minutes. Keep this page open: it shows up here when it's done, and later visits are instant."}
+          </p>
         </div>
-        <details style={{ marginTop: 12, border: 0, padding: 0, background: "none" }}>
-          <summary className="small muted">Cap used for the counterfactual</summary>
-          <div className="row" style={{ marginTop: 8 }}>
-            <input
-              aria-label="Cap per entity in ETH"
-              placeholder="ETH per entity (server default if empty)"
-              value={capInput}
-              onChange={(e) => setCapInput(e.target.value)}
-              inputMode="decimal"
-            />
-          </div>
-        </details>
-      </form>
-
-      {loading && (
-        <Notice>
-          Tracing the funding of every early buyer, two hops back. This takes longer the first time a token is scanned.
-        </Notice>
-      )}
-      {error && <Notice tone="error">{error}</Notice>}
-      {result && <ScanView r={result} />}
-    </>
-  );
+      </div>
+    );
+  }
+  return <ScanView r={result} />;
 }
 
 function ScanView({ r }: { r: ScanResult }) {
@@ -93,10 +79,13 @@ function ScanView({ r }: { r: ScanResult }) {
   const blockedShare =
     BigInt(s.kin.attemptedWei) > 0n ? Number((BigInt(s.kin.blockedWei) * 10_000n) / BigInt(s.kin.attemptedWei)) : null;
   return (
-    <section style={{ marginTop: 26 }}>
+    <section>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h2 style={{ margin: 0 }}>
-          {r.name ?? "Unknown token"} {r.symbol && <span className="muted">${r.symbol}</span>}
+          {r.name ?? "Unknown token"} {r.symbol && <span className="muted">${r.symbol}</span>}{" "}
+          <span className="pill" style={{ verticalAlign: "middle" }}>
+            Base mainnet · launched without Kin
+          </span>
         </h2>
         <span className="small faint">
           <Addr address={r.token} explorer={SCAN_EXPLORER} n={6} /> · scanned {new Date(r.scannedAt).toLocaleString()}
@@ -124,8 +113,16 @@ function ScanView({ r }: { r: ScanResult }) {
 
       {r.entities.length === 0 ? (
         <Notice>
-          No multi-wallet entities among the first {s.earlyBuyers} buyers: no two of them share a funder within{" "}
-          {r.method.maxHops} hops in the {r.method.fundingWindowHours} hours before they bought.
+          None of the first {s.earlyBuyers} buyers share a funder within {r.method.maxHops} hops{" "}
+          {r.method.fundingWindowHours > 0 ? `in the ${r.method.fundingWindowHours} hours before they bought` : "before they bought"}. Exchanges and
+          other public services don&apos;t count as a shared funder.
+          {s.freshWallets > 0 && BigInt(s.kin.blockedWei) > 0n && (
+            <>
+              {" "}
+              {s.freshWallets} of them were brand-new wallets, which on Kin share one {eth(r.method.caps.freshPoolCapWei)} ETH limit for new
+              wallets: that is where the {eth(s.kin.blockedWei)} ETH Kin would have refused comes from.
+            </>
+          )}
         </Notice>
       ) : (
         <>
@@ -175,7 +172,7 @@ function ScanView({ r }: { r: ScanResult }) {
         <summary>How this scan was computed</summary>
         <ul className="small muted">
           <li>Early buyers: the first {r.method.earlyBuyers} wallets that received the token in a transaction they sent themselves, excluding the token&apos;s creation transaction.</li>
-          <li>Links: two wallets share a native-ETH funder within {r.method.maxHops} hops in the {r.method.fundingWindowHours} hours before their first buy. Labelled exchange, bridge and router addresses never link.</li>
+          <li>Links: two wallets share a native-ETH funder within {r.method.maxHops} hops {r.method.fundingWindowHours > 0 ? `in the ${r.method.fundingWindowHours} hours before` : "before"} their first buy. Labelled exchange, bridge and router addresses never link, and neither do contracts or wallets with 10,000 or more transactions (exchange hot wallets).</li>
           <li>Tiers as Kin would assign them: linked wallets share one {capEth} ETH cap; new unlinked wallets (no prior transactions, or first funded shortly before buying) split one {freshEth} ETH fresh pool evenly; other wallets get their own {capEth} ETH cap.</li>
           <li>Counterfactual: the observed buys replayed in chain order; a buy is rejected if it would take its entity past the cap. Buys paid in a token rather than ETH are not counted ({s.kin.unknownBuys} here).</li>
           <li>

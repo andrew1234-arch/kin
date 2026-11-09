@@ -24,22 +24,22 @@ You play a bundler: one person with three wallets, all buying in the same launch
 | 1 | Three wallets are created in your browser | Three addresses |
 | 2 | Kin's faucet sends 0.0005 test ETH to the first wallet | The faucet transaction |
 | 3 | The first wallet funds the other two, like a bundler would | Two transfers, "You → Extra wallet 1/2" |
-| 4 | Kin traces where each wallet's ETH came from | "Same source, so Kin treats them as one buyer with one 0.0003 ETH limit" |
-| 5 | All three wallets buy 0.00015 ETH each | Two marked **bought**, one marked **blocked** |
+| 4 | Kin traces where each wallet's ETH came from | "Same source, so Kin treats them as one buyer with one 0.0001 ETH limit" |
+| 5 | All three wallets try to buy the full limit, 0.0001 ETH each | One marked **bought**, two marked **blocked** |
 
 On the right, the diagram fills in as the run goes: the funder, the three wallets grouped as one buyer, and their
-buys hitting the pool's limit bar. Below it, **With Kin** shows 2/3 and **Without Kin** shows 3/3 (the same buys
+buys hitting the pool's limit bar. Below it, **With Kin** shows 1/3 and **Without Kin** shows 3/3 (the same buys
 simulated on a normal pool with the same token settings).
 
-**Expected result:** "Kin blocked 1 of 3 buys. Without Kin, 3 of 3 go through." and "Recorded onchain: 0.0003 ETH".
+**Expected result:** "Three wallets, one person's allowance." and "Kin let them buy 0.0001 ETH together, not 0.0003.
+It refused 2 of 3 buys; without Kin, 3 of 3 go through."
 
-**Why exactly one is blocked:** the launch's limit is 0.0003 ETH and each wallet tries half of it. The first two
-fill the shared limit, so the third goes over it. If each wallet tried the full limit, two of three would be
-refused. The number that matters is not how many buys fail but how much the group gets: **one limit, not three**.
+**Why:** each wallet tries to buy the whole limit, as a bundler would. The first buy uses the group's one limit, so
+the pool refuses the other two. Three wallets get exactly what one wallet would: **one limit, not three**.
 
 **Check that it's real:**
-- Click the **blocked** buy's transaction. On Basescan it shows as failed: the pool reverted it.
-- Click either **bought** transaction: it succeeded, and the tokens went to Kin's vault.
+- Click either **blocked** buy's transaction. On Basescan it shows as failed: the pool reverted it.
+- Click the **bought** transaction: it succeeded, and the tokens went to Kin's vault.
 - Open **Kin Scan**, pick the same launch, and find your three wallets as one group with "limit reached".
 
 If anything stops halfway, press **Continue**: the run picks up where it left off (progress is saved in your browser).
@@ -52,9 +52,9 @@ If anything stops halfway, press **Continue**: the run picks up where it left of
 3. One funder sends ETH to 20 brand-new wallets. Kin traces them, gives all 20 one shared limit, and all 20 buy at the
    moment the window opens: on a Kin pool and on a normal pool with the same settings.
 
-**Expected result:** **With Kin 10/20, Without Kin 20/20.** The sandbox's limit is ten buys' worth, so the first ten
-fill it and the other ten are refused. The diagram shows the 20 wallets grouped as one buyer and each buy landing or
-being refused. The step list links to the funding transactions and both launch transactions.
+**Expected result:** **With Kin 1/20, Without Kin 20/20.** Every wallet tries to buy the group's whole limit, so the
+first buy uses it and the pool refuses the other 19. Twenty wallets, one person's allowance. The diagram shows the 20
+wallets grouped as one buyer and each buy landing or being refused. The step list links to the funding transactions and both launch transactions.
 
 ## Test 3: Launch your own token (1 minute, then a 32-minute wait)
 
@@ -76,18 +76,20 @@ connection per day.
 
 ## Test 4: Kin Scan (1 minute)
 
-1. Open **Kin Scan**. It opens on Kin's own launches; pick the one you used in Test 1 (usually "Kin Demo N").
+1. Open **Kin Scan**. One search box takes any token. Under it, pick the launch you used in Test 1 (usually
+   "Kin Demo N"), or paste its token address or name.
 2. You see every wallet that asked for a limit, in order. Numbered wallets were funded from the same place, and Kin
    counted each numbered group as one buyer.
 3. Under **Wallets Kin counted as one buyer**, each group shows its funder, a picture of the group and its shared
    limit bar, with the amount used read straight from the pool. Expand a group to see each wallet and the transfer
    that linked it.
 
-**Expected result** for a Test 1 run: one group of 3 wallets, funded by your first wallet, "0.0003 of 0.0003 ETH used",
+**Expected result** for a Test 1 run: one group of 3 wallets, funded by your first wallet, "0.0001 of 0.0001 ETH used",
 marked "limit reached".
 
-**Bonus:** further down, **Scan any token on Base** takes a Base mainnet token address and shows which of its early
-buyers shared a funder, and what Kin's limit would have refused. A first scan of a busy token can take a minute.
+**Any token on Base:** paste a Base mainnet token address in the same box, or press **$BRETT**. You see the token's
+early buyers grouped by shared funder and what Kin's limit would have refused. The first scan of a busy token can take
+a few minutes: the page waits and shows it when it's ready, and the result is kept, so later visits are instant.
 
 ## Test 5: Your profile
 
@@ -119,7 +121,7 @@ Everything Kin decides is public, and everything the pool enforced is onchain.
 ```bash
 git clone --recursive https://github.com/andrew1234-arch/kin && cd kin
 (cd contracts && forge test)              # 53 tests: hook, router, vault, factory, permits
-(cd engine && bun install && bun test)    # 59 tests: clustering, launches, permits, public launches
+(cd engine && bun install && bun test)    # 61 tests: clustering, launches, permits, public launches, rate limits
 ./engine/scripts/sandbox-local.sh         # the 20-wallet attack on a local chain, about 20 seconds
 ```
 

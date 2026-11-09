@@ -13,7 +13,7 @@ import { adminClients, deployLaunch, withAdminLock } from "./onchain";
  * opens about 32 minutes after deploy, so the default lead overlaps the windows by a few minutes.
  *
  *   DEMO_WINDOW_MIN (180)  window length       DEMO_LOCK_MIN (10)       vault lock after the window
- *   DEMO_CAP_ETH (0.0003)  cap per entity      DEMO_FRESH_CAP_ETH (0.003)  shared cap for wallets with no history
+ *   DEMO_CAP_ETH (0.0001)  cap per entity      DEMO_FRESH_CAP_ETH (0.003)  shared cap for wallets with no history
  *   DEMO_LEAD_MIN (40)     when to deploy the next one
  *
  * Demo launches treat only never-used wallets (nonce 0) as fresh, with no age rule: a test wallet that has sent a
@@ -29,7 +29,7 @@ export function demoSettings() {
     windowSec: Math.round(envNum("DEMO_WINDOW_MIN", 180, { min: 5 }) * 60),
     lockSec: Math.round(envNum("DEMO_LOCK_MIN", 10, { min: 0 }) * 60),
     leadSec: Math.round(envNum("DEMO_LEAD_MIN", 40, { min: 1 }) * 60),
-    capWei: parseEther(envStr("DEMO_CAP_ETH") ?? "0.0003"),
+    capWei: parseEther(envStr("DEMO_CAP_ETH") ?? "0.0001"),
     freshCapWei: parseEther(envStr("DEMO_FRESH_CAP_ETH") ?? "0.003"),
   };
 }
@@ -115,7 +115,9 @@ export function startDemoKeeper(rt: Runtime, log = console.log) {
         await deployTwin(twinless.slug);
         return;
       }
-      const latestEnd = Math.max(0, ...demos.map((r) => r.onchain!.windowEnd));
+      // Only launches with today's settings count: after DEMO_CAP_ETH changes, the next window is deployed right away.
+      const current = demos.filter((r) => r.tiers.capWei === s.capWei.toString());
+      const latestEnd = Math.max(0, ...current.map((r) => r.onchain!.windowEnd));
       if (latestEnd - now > s.leadSec) return;
       let n = demos.length + 1;
       while (rt.store.list().some((r) => r.slug === `kin-demo-${n}`)) n++;

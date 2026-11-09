@@ -60,7 +60,7 @@ export const CLUSTER_DEFAULTS = {
 export const CLUSTER_METHOD =
   "weighted links (Nuno engine port): wallet funds wallet 1.0; same hop-1 funder within 24 h 1.0; shared funding " +
   "ancestor within 2 hops 0.8; same-block early buy 0.5; merge at 1.0; exchanges excluded; hubs > 50 wallets " +
-  "ignored unless they pay like a farm";
+  "ignored unless they pay like a farm; contracts and wallets with 10,000+ transactions count as services and link no one";
 
 const MAX_PAIRWISE_GROUP = 256;
 const norm = (a: string) => a.toLowerCase();

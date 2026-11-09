@@ -89,19 +89,49 @@ const SCAN_TTL_MS = envNum("SCAN_CACHE_SECONDS", 600, { min: 0 }) * 1000;
 const scanDir = join(dataDir(), "scans");
 mkdirSync(scanDir, { recursive: true });
 
-async function scan(token: string, cap?: string, fresh?: string): Promise<ScanResult> {
-  const key = `${token.toLowerCase()}:${cap ?? ""}:${fresh ?? ""}`;
+const scanFailed = new Map<string, { at: number; message: string }>();
+
+function scanKey(token: string, cap?: string, fresh?: string) {
+  return `${token.toLowerCase()}:${cap ?? ""}:${fresh ?? ""}`;
+}
+
+/** A finished scan of this token with the default settings, from memory or from disk: early buyers never change. */
+function cachedScan(key: string, token: string, custom: boolean): ScanResult | null {
   const hit = scanCache.get(key);
   if (hit && Date.now() - hit.at < SCAN_TTL_MS) return hit.result;
+  if (custom) return null;
+  const file = join(scanDir, `${getAddress(token)}.json`);
+  if (!existsSync(file)) return null;
+  try {
+    const result = JSON.parse(readFileSync(file, "utf8")) as ScanResult;
+    scanCache.set(key, { at: Date.now(), result });
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function scan(token: string, cap?: string, fresh?: string): Promise<ScanResult> {
+  const key = scanKey(token, cap, fresh);
+  const hit = cachedScan(key, token, cap !== undefined || fresh !== undefined);
+  if (hit) return Promise.resolve(hit);
   const running = scanInflight.get(key);
   if (running) return running;
+  scanFailed.delete(key);
   const p = (async () => {
-    const rpc = Rpc.fromEnv("BASE_RPC_URL");
+    // Gentle on purpose: the scan shares the data provider's rate limit with live launches and the sandbox.
+    const rpc = Rpc.fromEnv("BASE_RPC_URL", envNum("SCAN_RPC_CONCURRENCY", 3, { min: 1, integer: true }));
     const result = await scanToken(rpc, historyFromEnv(rpc), token, scanOptionsFromEnv({ capEth: cap, freshCapEth: fresh }));
     scanCache.set(key, { at: Date.now(), result });
-    writeFileSync(join(scanDir, `${result.token}.json`), JSON.stringify(result));
+    if (cap === undefined && fresh === undefined) writeFileSync(join(scanDir, `${result.token}.json`), JSON.stringify(result));
     return result;
-  })().finally(() => scanInflight.delete(key));
+  })()
+    .catch((e) => {
+      scanFailed.set(key, { at: Date.now(), message: e instanceof Error ? e.message : String(e) });
+      throw e;
+    })
+    .finally(() => scanInflight.delete(key));
+  p.catch(() => undefined); // a scan that outlives its request still settles quietly
   scanInflight.set(key, p);
   return p;
 }
@@ -253,11 +283,25 @@ const server = Bun.serve({
       if (parts[0] === "scan" && parts[1] && req.method === "GET") {
         if (!envStr("BASE_RPC_URL")) return fail(503, "Scan is not configured on this server (BASE_RPC_URL)");
         if (!isAddress(parts[1])) return fail(400, "not a token address");
-        if (rateLimited(`scan:${ip}`, 10, 60_000)) return fail(429, "too many scans; try again in a minute");
         const cap = url.searchParams.get("cap") ?? undefined;
         const fresh = url.searchParams.get("fresh") ?? undefined;
         for (const v of [cap, fresh]) if (v !== undefined && !/^\d+(\.\d+)?$/.test(v)) return fail(400, "cap must be a number of ETH");
-        return json(await scan(getAddress(parts[1]), cap, fresh));
+        const token = getAddress(parts[1]);
+        const key = scanKey(token, cap, fresh);
+        // Polling a scan that is already running (or finished) is free; starting a new one is rate limited.
+        const failed = scanFailed.get(key);
+        if (failed && !scanInflight.has(key) && Date.now() - failed.at < 60_000 && url.searchParams.get("retry") !== "1")
+          return fail(502, `The scan failed: ${failed.message}`);
+        const known = scanInflight.has(key) || cachedScan(key, token, cap !== undefined || fresh !== undefined) !== null;
+        if (!known && rateLimited(`scan:${ip}`, 6, 60_000)) return fail(429, "Too many scans from this connection; try again in a minute");
+        // A busy token can take minutes to scan: answer "running" after a while and let the page poll.
+        const done = await Promise.race([
+          scan(token, cap, fresh).then((r) => ({ r }), (e: unknown) => ({ e })),
+          new Promise<null>((r) => setTimeout(() => r(null), 20_000)),
+        ]);
+        if (done === null) return json({ status: "running" }, 202);
+        if ("e" in done) return fail(502, `The scan failed: ${done.e instanceof Error ? done.e.message : String(done.e)}`);
+        return json(done.r);
       }
 
       // ---- launches

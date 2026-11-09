@@ -1,4 +1,5 @@
-import { createPublicClient, getAddress, http, recoverMessageAddress, type Hex, type PublicClient } from "viem";
+import { chainTransport } from "./data/transport";
+import { createPublicClient, getAddress, recoverMessageAddress, type Hex, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { fundingTokens, scanOptionsFromEnv } from "./config";
 import { historyFromEnv } from "./data/history";
@@ -39,7 +40,7 @@ export function launchRuntime() {
   const scanOpts = scanOptionsFromEnv();
   const baseVerifyCfg = baseVerifyConfigFromEnv();
   const pub: PublicClient | null = rpcUrl
-    ? (createPublicClient({ chain: chainFor(chainId, rpcUrl), transport: http(rpcUrl) }) as PublicClient)
+    ? (createPublicClient({ chain: chainFor(chainId, rpcUrl), transport: chainTransport(rpcUrl, chainId) }) as PublicClient)
     : null;
   const store = new LaunchStore(dataDir());
   const service = new LaunchService({
