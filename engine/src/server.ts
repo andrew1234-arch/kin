@@ -47,6 +47,7 @@ import { Faucet, FaucetError, faucetFromEnv } from "./faucet";
 import { startDemoKeeper } from "./launch/demo";
 import { createPublicLaunch, publicLaunchesEnabled, type PublicLaunchInput } from "./launch/public";
 import { envNum, envStr } from "./env";
+import { publicError, redactSecrets } from "./redact";
 
 const PORT = envNum("PORT", 8787, { min: 1, integer: true });
 const CORS = envStr("CORS_ORIGIN") ?? "*";
@@ -57,8 +58,9 @@ if (envStr("DEMO_LAUNCHES") === "1") startDemoKeeper(launches);
 // ------------------------------------------------------------------ helpers
 
 const headers = { "access-control-allow-origin": CORS, "access-control-allow-headers": "content-type" };
+// Every response is scrubbed of RPC API keys, including records written before errors were cleaned at the source.
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers, ...extra } });
+  new Response(redactSecrets(JSON.stringify(body)), { status, headers: { "content-type": "application/json", ...headers, ...extra } });
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
 
 const hits = new Map<string, number[]>();
@@ -127,7 +129,7 @@ function scan(token: string, cap?: string, fresh?: string): Promise<ScanResult> 
     return result;
   })()
     .catch((e) => {
-      scanFailed.set(key, { at: Date.now(), message: e instanceof Error ? e.message : String(e) });
+      scanFailed.set(key, { at: Date.now(), message: publicError(e) });
       throw e;
     })
     .finally(() => scanInflight.delete(key));
@@ -171,7 +173,8 @@ function startRun(): Run {
     })
     .catch((err) => {
       run.status = "failed";
-      run.error = (err as Error).message;
+      console.error(`sandbox ${id} failed:`, redactSecrets(String((err as Error)?.message ?? err)));
+      run.error = publicError(err);
       emit({ type: "error", message: run.error });
     })
     .finally(() => {
@@ -205,7 +208,7 @@ function sse(run: Run): Response {
   const stream = new ReadableStream({
     start(controller) {
       const enc = new TextEncoder();
-      const send = (e: SandboxEvent) => controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+      const send = (e: SandboxEvent) => controller.enqueue(enc.encode(`data: ${redactSecrets(JSON.stringify(e))}\n\n`));
       run.events.forEach(send);
       if (run.status !== "running") {
         controller.close();
@@ -300,7 +303,7 @@ const server = Bun.serve({
           new Promise<null>((r) => setTimeout(() => r(null), 20_000)),
         ]);
         if (done === null) return json({ status: "running" }, 202);
-        if ("e" in done) return fail(502, `The scan failed: ${done.e instanceof Error ? done.e.message : String(done.e)}`);
+        if ("e" in done) return fail(502, `The scan failed: ${publicError(done.e)}`);
         return json(done.r);
       }
 
@@ -395,8 +398,8 @@ const server = Bun.serve({
       return fail(404, "not found");
     } catch (e) {
       if (e instanceof LaunchError || e instanceof FaucetError) return fail(e.status, e.message);
-      console.error(e);
-      return fail(500, (e as Error).message);
+      console.error(redactSecrets(String((e as Error)?.stack ?? e)));
+      return fail(500, publicError(e));
     }
   },
 });

@@ -1,3 +1,4 @@
+import { publicError } from "../redact";
 import { readFileSync } from "node:fs";
 import { getAddress, keccak256, parseEther, parseEventLogs, toBytes, type Address, type Hex } from "viem";
 import { kinLaunchFactoryAbi } from "../abi/kin";
@@ -144,7 +145,7 @@ export function startDemoKeeper(rt: Runtime, log = console.log) {
       log(`demo keeper: ${slug} deployed; window ${new Date(o.windowStart * 1000).toISOString()} to ${new Date(o.windowEnd * 1000).toISOString()}`);
       await deployTwin(slug);
     } catch (e) {
-      log(`demo keeper: ${(e as Error).message.split("\n")[0]}`);
+      log(`demo keeper: ${publicError(e)}`);
     } finally {
       busy = false;
     }

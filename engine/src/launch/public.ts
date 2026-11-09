@@ -1,3 +1,4 @@
+import { publicError } from "../redact";
 import { getAddress, isAddress, parseEther, type Hex } from "viem";
 import { envNum, envStr } from "../env";
 import type { launchRuntime } from "../runtime";
@@ -104,7 +105,7 @@ export async function createPublicLaunch(rt: Runtime, input: PublicLaunchInput, 
     // Keep nothing half-made: a record without a pool would show as a launch that never opens.
     rt.store.remove(slug);
     byIp.set(ip, mine.slice(0, -1));
-    throw new LaunchError(`The launch could not be deployed: ${(e as Error).message.split("\n")[0]}`, 502);
+    throw new LaunchError(`The launch could not be deployed: ${publicError(e)}`, 502);
   }
   return rt.service.get(slug);
 }
