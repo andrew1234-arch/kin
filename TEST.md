@@ -121,7 +121,7 @@ Everything Kin decides is public, and everything the pool enforced is onchain.
 ```bash
 git clone --recursive https://github.com/andrew1234-arch/kin && cd kin
 (cd contracts && forge test)              # 53 tests: hook, router, vault, factory, permits
-(cd engine && bun install && bun test)    # 61 tests: clustering, launches, permits, public launches, rate limits
+(cd engine && bun install && bun test)    # 62 tests: clustering, launches, permits, public launches, rate limits, key scrubbing
 ./engine/scripts/sandbox-local.sh         # the 20-wallet attack on a local chain, about 20 seconds
 ```
 

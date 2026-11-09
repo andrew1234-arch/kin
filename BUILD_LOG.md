@@ -4,6 +4,52 @@ What was built, with which AI tool and prompt, and what was changed by hand. New
 
 ---
 
+## D5, Mon 9 Nov 2026: live end to end (Railway + Vercel), The flow, Kin Scan for every token
+
+Tool: AI coding agent (Claude Code). Prompts, in the owner's words: the site should "work end to end, not try to
+explain the concept"; merge Try it and the sandbox into one page "The flow"; Kin Scan "primarily for launches on
+Kin"; "launching a token on Kin must work today"; then "let's go with the bigger buys, the sandbox and the
+headline"; the any-token scan "should be at the top, working for all"; BRETT returned HTTP 429, fix it.
+
+### Built
+
+- **Launch from the site** (`POST /launches`, `/launch/new`): name, symbol, limit, window and lock; the engine
+  deploys the token and its Kin pool on Base Sepolia in about 6 seconds. Per-connection and daily limits.
+- **The flow** (`/flow`): one button creates three wallets in the browser, funds one from Kin's faucet, splits it
+  like a bundler, asks Kin for limits and buys with all three. Each wallet tries the whole limit, so the pool
+  refuses two of three ("Three wallets, one person's allowance"). The 20-wallet sandbox now refuses 19 of 20.
+  A diagram fills in as each transaction lands, next to the same buys simulated on a normal pool.
+- **Kin Scan** (`/scan`): one search for any token. A Kin launch shows every limit and the hook's `entitySpent`;
+  a Base mainnet token shows its early buyers grouped by funder.
+- **Engine hardening**: the RPC client backs off on HTTP 429 (Retry-After, one shared pause); long scans answer
+  202 and the page polls; scans are cached on disk. Transactions fall back to Base's public RPC and survive
+  timeouts (the hash is checked before failing). Error text is cut to one line and scrubbed of RPC API keys
+  before it is stored or served.
+- **Hosting**: engine on Railway (Dockerfile, a volume seeded with the live launches), site on Vercel at
+  https://kinverse.vercel.app.
+
+### Changed by hand / by the owner's call
+
+- The owner had the home page restored verbatim after the agent redesigned it, and limited How it works to added
+  illustrations; the animation was then moved beside the heading at the owner's request.
+- The owner chose Railway over tunnels and topped up the deployer and the faucet with test ETH.
+
+### Found and fixed
+
+- The first BRETT scan merged all 50 early buyers into one group through an exchange hot wallet (2.2 million
+  transactions). Funders that are contracts or have sent 10,000+ transactions now count as public services and
+  link no one; the rescan shows no linked groups.
+- A failed sandbox run had stored the RPC URL, API key included, in its error. Caught before any push: the commit
+  was rewritten, the engine now scrubs keys from everything it stores or serves, and a test pins it.
+
+### Verified
+
+- On the live site (Vercel + Railway, Base Sepolia): The flow, 1 of 3 buys landed, 2 refused with
+  `EntityCapExceeded`, 0.0001 ETH recorded by the hook. Sandbox on Base Sepolia: Kin 1 of 20, plain pool 20 of 20.
+  BRETT scan on Base mainnet completes. Engine 62 tests, contracts 53 tests.
+
+---
+
 ## D4, Sun 8 Nov 2026: instant launches (no registration)
 
 Tool: AI coding agent. Prompt: the owner asked whether the funding check could run automatically at buy time,

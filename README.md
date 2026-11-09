@@ -220,7 +220,7 @@ What Kin does not do, today:
 | Piece | State |
 |---|---|
 | Contracts | 53 tests pass (`cd contracts && forge test`), 12 of them for instant-launch permits. Deployed to Base Sepolia (addresses above) |
-| Engine | 61 tests pass (`cd engine && bun test`), including launch-backend and instant-launch integration tests on a local chain |
+| Engine | 62 tests pass (`cd engine && bun test`), including launch-backend and instant-launch integration tests on a local chain |
 | Instant launches on Base Sepolia | Live. Demo launches are kept open around the clock; launches created from the site deploy in about 6 seconds |
 | The flow, do it yourself | Verified end to end in a browser on Base Sepolia (9 Nov 2026, 42 s): 3 wallets funded from one, linked into one entity, each tried to buy the full 0.0001 ETH limit; 1 buy landed, 2 reverted with `EntityCapExceeded`, 0.0001 ETH recorded by the hook for the group. On a normal pool all 3 would land |
 | The flow, at scale (sandbox) | Run on Base Sepolia (9 Nov 2026): every wallet tries to buy the group's whole limit; Kin pool 1 of 20 buys, plain pool 20 of 20. The refused buys revert with `EntityCapExceeded(entity, 0.00002 ETH cap, 0.00004 ETH attempted)` |
@@ -291,5 +291,4 @@ web/          Next.js: /, /flow, /launch, /launch/new, /launch/[slug], /scan, /m
               /receipt/[slug], /embed/receipt/[slug], /replay
 TEST.md       how to test Kin, step by step
 BUILD_LOG.md  what was built, with which AI tool, and what was changed by hand
-SCORECARD.md  the Vibeathon 02 rubric, scored with evidence and open gaps
 ```
