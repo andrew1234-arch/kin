@@ -1,0 +1,106 @@
+{
+  "slug": "kin-demo-1",
+  "chainId": 84532,
+  "name": "Kin Demo 1",
+  "symbol": "KDEMO",
+  "mode": "instant",
+  "demo": true,
+  "registrationClosesAt": 1794218603,
+  "tiers": {
+    "capWei": "300000000000000",
+    "freshPoolCapWei": "3000000000000000",
+    "verifiedCapWei": "300000000000000",
+    "freshMaxNonce": 0,
+    "freshMaxAgeHours": 0
+  },
+  "window": {
+    "delayAfterBuildSec": 0,
+    "lengthSec": 10800,
+    "lockSec": 600
+  },
+  "createdAt": 1794218603,
+  "verifications": [],
+  "disputes": [],
+  "overrides": [],
+  "allowlist": null,
+  "onchain": {
+    "poolId": "0xcc18e2251490a5aad403f7ab363a2e03cc29cf5c2f3521cfff527620c570dfb3",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0x9200Ab76a066AC14c4eE65bA4D1e9918D81403dB",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0"
+    },
+    "token": "0x9200Ab76a066AC14c4eE65bA4D1e9918D81403dB",
+    "launchTx": "0x2cc26d4b4ff2fd8276979619babb82136fbfa708a09c2110f03789a3cc917fd4",
+    "windowStart": 1794220526,
+    "windowEnd": 1794231326,
+    "lockDuration": 600,
+    "rootVersion": 0
+  },
+  "permits": [
+    {
+      "wallet": "0x2CBB2890BB205E529a7282D643E8935530b24DC2",
+      "entityId": "0xf582010f5ffc877954a8f95017f62b8d78c0837572584729edb37fa1d6bf4b16",
+      "tier": "aged",
+      "cap": "300000000000000",
+      "links": [],
+      "at": 1794220919,
+      "nonce": 2,
+      "firstFundedAt": 1794220900
+    },
+    {
+      "wallet": "0x96dA2Da25Adea0C7F1822f39F9d6e4A6303eD2a1",
+      "entityId": "0xf582010f5ffc877954a8f95017f62b8d78c0837572584729edb37fa1d6bf4b16",
+      "tier": "linked",
+      "cap": "300000000000000",
+      "links": [
+        {
+          "from": "0x2CBB2890BB205E529a7282D643E8935530b24DC2",
+          "to": "0x96dA2Da25Adea0C7F1822f39F9d6e4A6303eD2a1",
+          "txHash": "0x9fa6040abff15c977b75a9f9e2bf2b914fed55cc7aabf943fb587b84a0fe4e5a",
+          "hop": 1
+        }
+      ],
+      "via": "0x2CBB2890BB205E529a7282D643E8935530b24DC2",
+      "at": 1794220921,
+      "nonce": 0,
+      "firstFundedAt": 1794220904
+    },
+    {
+      "wallet": "0x01Fda5E2Af55A4D275AeD2bC948d08B54cd41715",
+      "entityId": "0xf582010f5ffc877954a8f95017f62b8d78c0837572584729edb37fa1d6bf4b16",
+      "tier": "linked",
+      "cap": "300000000000000",
+      "links": [
+        {
+          "from": "0x2CBB2890BB205E529a7282D643E8935530b24DC2",
+          "to": "0x01Fda5E2Af55A4D275AeD2bC948d08B54cd41715",
+          "txHash": "0x621aeebb06ad8866ccab21fd918af8ebd203c099a5f509f78b618d91f9535797",
+          "hop": 1
+        }
+      ],
+      "via": "0x2CBB2890BB205E529a7282D643E8935530b24DC2",
+      "at": 1794220924,
+      "nonce": 0,
+      "firstFundedAt": 1794220910
+    }
+  ],
+  "instant": {
+    "policyJson": "{\"launch\":{\"chainId\":84532,\"slug\":\"kin-demo-1\"},\"method\":{\"exclusions\":{\"commit\":\"d9b21aefeded56f7fce7208d6fa173d128526c1b\",\"count\":2340,\"extra\":[\"0xf76c1dbbb621315a30f0b7f6c20e2324371a46b3\"],\"file\":\"data/csv/accounts.csv\",\"license\":\"MIT (Copyright (c) 2022 Dawson Botsford)\",\"repo\":\"https://github.com/dawsbot/eth-labels\"},\"fundingTokens\":[],\"fundingWindowHours\":\"whole history\",\"heuristic\":\"weighted links (Nuno engine port): wallet funds wallet 1.0; same hop-1 funder within 24 h 1.0; shared funding ancestor within 2 hops 0.8; same-block early buy 0.5; merge at 1.0; exchanges excluded; hubs > 50 wallets ignored unless they pay like a farm; funding (native ETH, or a funding token sent by a wallet) traced within 2 hops when the wallet asks to buy\"},\"permitSigner\":\"0x5606da7e22630e960d75955Ce710622B322a9b16\",\"rules\":[\"No registration. A wallet's funding is traced when it asks to buy.\",\"A wallet linked by funding (2 hops, exchanges excluded) to an earlier buyer or its funders joins that entity and its cap.\",\"A fresh wallet (no history, or first funded within freshMaxAgeHours) joins the launch's shared fresh pool.\",\"Any other wallet is its own entity with the normal cap.\",\"Every assignment is public at /launches/<slug>/permits; each window buy's entity is in KinHook's WindowBuy event.\"],\"schema\":\"kin-instant-policy/1\",\"tiers\":{\"capWei\":\"300000000000000\",\"freshMaxAgeHours\":0,\"freshMaxNonce\":0,\"freshPoolCapWei\":\"3000000000000000\"}}",
+    "evidenceHash": "0x0dedb7b176e55c964a4f72c8e247d749dd38862401c12ccd70f7263a51869f29"
+  },
+  "plainTwin": {
+    "poolId": "0x86a3aa307244c9be2c5236779cf1a1d9a56ba442997034d249fca8d4698f860c",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0x14743493643a7F899D1e1B5E09D727327bF4Ad8a",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x0000000000000000000000000000000000000000"
+    },
+    "token": "0x14743493643a7F899D1e1B5E09D727327bF4Ad8a",
+    "launchTx": "0x5bc3a18cb7624edb9c55ca5c0c921e58ba1383cc53fd9584092b6cf953d13eda"
+  }
+}

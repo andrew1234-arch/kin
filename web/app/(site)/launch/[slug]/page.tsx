@@ -119,6 +119,7 @@ export default function LaunchPage() {
           </Link>
         )}
       </header>
+      {o && <JustLaunched launch={launch} now={now} />}
 
       <ol className={`stepper${steps.length === 4 ? " stepper-4" : ""}`} aria-label="Launch phase">
         {steps.map((p, i) => (
@@ -870,5 +871,35 @@ function Disputes({ launch, phase, onChange }: { launch: LaunchView; phase: Phas
         </div>
       )}
     </>
+  );
+}
+
+/** Shown once to the creator after launching from the site (?created=1): the launch is onchain, here is the link to share. */
+function JustLaunched({ launch, now }: { launch: LaunchView; now: number }) {
+  const [show, setShow] = useState(false);
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    setShow(new URLSearchParams(window.location.search).get("created") === "1");
+    setUrl(`${window.location.origin}/launch/${launch.slug}`);
+  }, [launch.slug]);
+  if (!show || !launch.onchain) return null;
+  const o = launch.onchain;
+  return (
+    <div className="just-launched card">
+      <p className="eyebrow">Deployed on Base Sepolia</p>
+      <h2>${launch.symbol} is live.</h2>
+      <p className="muted">
+        {now < o.windowStart
+          ? `Buying opens in ${duration(o.windowStart - now)}. Share this page: anyone can connect a wallet and check their limit now.`
+          : "Buying is open. Share this page."}
+      </p>
+      <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <code className="mono just-url">{url}</code>
+        <button className="btn btn-sm" onClick={() => navigator.clipboard?.writeText(url)}>
+          Copy link
+        </button>
+        <Tx hash={o.launchTx} explorer={LAUNCH_EXPLORER} />
+      </div>
+    </div>
   );
 }

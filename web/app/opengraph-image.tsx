@@ -15,7 +15,7 @@ export default function OpenGraphImage() {
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: BG, padding: "72px 80px" }}>
         <svg width="436" height="151" viewBox="0 0 208 72">
-          <g transform="translate(0 4)">
+          <g transform="translate(-2.254 2.746) scale(1.10169)">
             <circle cx="32" cy="32" r="27" fill="none" stroke={BLUE} strokeWidth="5" />
             <g stroke={BLUE} strokeWidth="3" strokeLinecap="round">
               <line x1="32" y1="20" x2="21.6" y2="38" />

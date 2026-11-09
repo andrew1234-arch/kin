@@ -27,13 +27,33 @@ inside the window (earlier buys get a better price), and the launcher's honesty 
 hook trusts the engine's permit signer instead: every assignment it signs is public and each buy's entity is in
 the `WindowBuy` event, but there is no dispute before the buy. See BUILD_LOG.md.
 
+## Try it (judges start here)
+
+Open **`/try`** on the live site. In about two minutes, with no wallet extension, you play the bundler on a real
+Base Sepolia launch:
+
+1. **Make three test wallets.** Keys are generated in your browser and only ever hold test ETH.
+2. **Get test ETH.** Kin's faucet sends 0.0005 ETH to the first wallet. The faucet counts as an exchange, so it
+   links no one.
+3. **Split it like a bundler.** That wallet funds the other two.
+4. **Ask Kin for limits.** The engine traces each wallet's funding on the spot. All three land in one entity with one
+   limit, and each gets a signed permit.
+5. **Buy with all three.** Two buys fill the shared limit. The third is sent anyway, and KinHook reverts it with
+   `EntityCapExceeded`, so the rejection is onchain for you to inspect.
+
+Every step links to the transaction. Afterwards, **`/me`** shows each wallet's entity, limit and vault balance, and
+has a claim button once the short lock ends. To use your own wallet, connect it anywhere on the site. `/me` has a
+"Get test ETH" button, and any launch page takes you through the same flow. The engine keeps a demo launch window
+open at all times (`DEMO_LAUNCHES=1`: a new 3-hour window is deployed before the last one closes), so there is
+always something to buy in.
+
 ## Layout
 
 ```
 contracts/   Foundry: KinHook, KinRouter, KinVault, KinLaunchFactory, tests, deploy + Gate B scripts
 engine/      Bun + TypeScript: Kin Scan, cluster engine, allowlist builder, launch backend, sandbox relayer,
              replay job, Gate A, HTTP API (src/server.ts)
-web/         Next.js: /, /scan, /sandbox, /launch, /launch/[slug], /receipt/[slug], /embed/receipt/[slug], /replay
+web/         Next.js: /, /try, /me, /scan, /sandbox, /launch, /launch/[slug], /receipt/[slug], /embed/receipt/[slug], /replay
 BUILD_LOG.md what was built, with which AI tool, and what was changed by hand
 SCORECARD.md the Vibeathon 02 rubric, scored with evidence and open gaps
 ```

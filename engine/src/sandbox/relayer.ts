@@ -1,3 +1,4 @@
+import { withAdminLock } from "../adminLock";
 import { launchParams } from "../launchParams";
 import {
   createPublicClient,
@@ -15,16 +16,15 @@ import {
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { kinHookAbi, kinLaunchFactoryAbi, kinRouterAbi, kinVaultAbi } from "../abi/kin";
-import { buildAllowlist } from "../allowlist/build";
-import { CLUSTER_METHOD, clusterByFunding } from "../cluster/cluster";
-import { registrationMessage } from "../launch/registration";
-import type { FundingEdge, WalletProfile } from "../types";
+import { CLUSTER_METHOD } from "../cluster/cluster";
+import { assignInstant, instantPolicy, signPermit, type PermitAssignment } from "../launch/instant";
+import type { FundingEdge } from "../types";
 
 /**
- * Attack sandbox: one funder funds N fresh wallets; all N register for a demo Kin launch; the engine
- * clusters them from the real funding transactions; then every wallet tries to buy in the window, on
- * the Kin pool and on a plain (hookless) pool with the same parameters. Every step is an onchain
- * transaction with a hash. Unused ETH is swept back to the relayer at the end.
+ * Attack sandbox: one funder funds N new wallets, then every wallet tries to buy in a Kin launch and in a plain
+ * (hookless) launch with the same parameters. The Kin launch runs on the same instant rules as every Kin launch: no
+ * registration; each wallet's funding is traced when it buys, it is assigned an entity, and it gets a permit the hook
+ * checks in the swap. Every step is an onchain transaction with a hash. Unused ETH is swept back to the relayer.
  */
 export interface SandboxConfig {
   rpcUrl: string;
@@ -59,14 +59,20 @@ export interface SandboxResult {
   plain: { landed: number; rejected: number; poolId: Hex; token: Address; launchTx: Hex };
   funder: Address;
   fundingTxs: Hex[];
+  /** Always zero: the sandbox runs instant launches (permits, not an allowlist). Kept for older clients. */
   root: Hex;
+  /** keccak256 of the launch's instant policy file, committed onchain. */
   evidenceHash: Hex;
+  mode: "instant";
+  entities: number;
+  linkedWallets: number;
   entitySpentWei: string;
   vaultedTokens: string;
   elapsedMs: number;
 }
 
 const BUY_GAS = 600_000n;
+const ZERO32 = `0x${"00".repeat(32)}` as Hex;
 /** v4-core CustomRevert.WrappedError: how PoolManager surfaces a hook's revert. */
 export const V4_WRAPPED_ERROR = parseAbi(["error WrappedError(address target, bytes4 selector, bytes reason, bytes details)"]);
 const TRANSFER_GAS = 21_000n;
@@ -103,11 +109,13 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
       `relayer balance ${formatEther(relayerBal)} ETH is below this run's budget ${formatEther(funderBudget + launchBudget)} ETH`,
     );
   }
-  emit({ type: "step", step: "wallets", detail: `1 funder and ${cfg.bundleSize} fresh wallets generated` });
+  emit({ type: "step", step: "wallets", detail: `1 funder and ${cfg.bundleSize} new wallets generated` });
 
   // ---- 2. Funding: relayer -> funder -> N wallets
-  const fundFunder = await relayer.sendTransaction({ to: funder.account.address, value: funderBudget });
-  const fundFunderRcpt = await pub.waitForTransactionReceipt({ hash: fundFunder });
+  const { fundFunder, fundFunderRcpt } = await withAdminLock(async () => {
+    const fundFunder = await relayer.sendTransaction({ to: funder.account.address, value: funderBudget });
+    return { fundFunder, fundFunderRcpt: await pub.waitForTransactionReceipt({ hash: fundFunder }) };
+  });
   let nonce = await pub.getTransactionCount({ address: funder.account.address, blockTag: "pending" });
   const fundingTxs: Hex[] = [];
   for (const w of wallets) {
@@ -118,17 +126,8 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
   const fundingRcpts = await Promise.all(fundingTxs.map((hash) => pub.waitForTransactionReceipt({ hash })));
   emit({ type: "step", step: "funded", detail: `one funder sent ETH to ${cfg.bundleSize} wallets`, txs: [fundFunder, ...fundingTxs] });
 
-  // ---- 3. Registration: every wallet signs the registration message
+  // ---- 3. Limits at buy time: trace each wallet's funding (the transfers above), assign entities, as in a live launch
   const launchSlug = `sandbox-${Date.now()}`;
-  for (const w of wallets) {
-    const message = registrationMessage(launchSlug, w.account.address, cfg.chainId);
-    const signature = await w.account.signMessage({ message });
-    const ok = await pub.verifyMessage({ address: w.account.address, message, signature });
-    if (!ok) throw new Error("registration signature did not verify");
-  }
-  emit({ type: "step", step: "registered", detail: `${cfg.bundleSize} wallets registered with signed messages` });
-
-  // ---- 4. Clustering from the real funding transactions, then the allowlist
   const blockTs = new Map<bigint, number>();
   const tsOf = async (bn: bigint) => {
     if (!blockTs.has(bn)) blockTs.set(bn, Number((await pub.getBlock({ blockNumber: bn })).timestamp));
@@ -156,21 +155,29 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
     value: funderBudget,
     hop: 2,
   });
-  const addrs = wallets.map((w) => w.account.address);
-  const clusters = clusterByFunding(addrs, edges, { maxHops: 2, excluded: new Set() });
-  const profiles: WalletProfile[] = addrs.map((wallet) => ({ wallet, nonce: 0 }));
   const capWei = cfg.perWalletWei * BigInt(cfg.capBuys);
-  const allowlist = buildAllowlist({
-    launch: { chainId: cfg.chainId, launchId: launchSlug, snapshotBlock: fundingRcpts.at(-1)!.blockNumber.toString() },
-    tiers: { capWei, freshPoolCapWei: capWei, verifiedCapWei: capWei, freshMaxNonce: 0 },
-    wallets: profiles,
-    clusters,
+  // No fresh tier in the sandbox's own launch (freshMaxNonce -1): every wallet here is new, so the funding link
+  // alone decides, which is the thing the sandbox exists to show.
+  const tiers = { capWei, freshPoolCapWei: capWei, freshMaxNonce: -1, freshMaxAgeHours: 0 };
+  const now = Math.floor(Date.now() / 1000);
+  const assigned: PermitAssignment[] = [];
+  for (const w of wallets) {
+    const a = assignInstant(launchSlug, assigned, { wallet: w.account.address, nonce: 0, edges }, tiers, now, new Set());
+    assigned.push({ wallet: w.account.address, ...a, at: now, nonce: 0 });
+  }
+  const entityIds = new Set(assigned.map((a) => a.entityId));
+  const linkedWallets = assigned.filter((a) => assigned.filter((b) => b.entityId === a.entityId).length > 1).length;
+  const policy = instantPolicy({
+    slug: launchSlug,
+    chainId: cfg.chainId,
+    tiers: { capWei: capWei.toString(), freshPoolCapWei: capWei.toString(), freshMaxNonce: -1, freshMaxAgeHours: 0 },
+    permitSigner: relayer.account.address,
     method: { heuristic: CLUSTER_METHOD, maxHops: 2, source: "funding transactions observed by the sandbox relayer" },
   });
   emit({
     type: "step",
-    step: "clustered",
-    detail: `engine grouped ${allowlist.stats.linkedWallets} wallets into ${clusters.length} entity with one ${formatEther(capWei)} ETH cap`,
+    step: "limits",
+    detail: `Kin traced the funding: ${linkedWallets} of ${cfg.bundleSize} wallets share one funder, so they get one entity and one ${formatEther(capWei)} ETH limit`,
   });
 
   // ---- 5. Two launches: Kin (hooked) and plain (no hook), same parameters
@@ -178,14 +185,14 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
   const windowStart = latest.timestamp + BigInt(cfg.windowDelaySec);
   const base = {
     ...launchParams(),
-    root: allowlist.root,
-    evidenceHash: allowlist.evidenceHash,
-    stats: allowlist.stats,
+    root: ZERO32,
+    evidenceHash: policy.hash,
+    stats: { allowlistedWallets: 0, entities: 0, linkedWallets: 0, freshWallets: 0 },
     windowStart,
     windowEnd: windowStart + BigInt(cfg.windowLengthSec),
     lockDuration: BigInt(cfg.lockSec),
   };
-  const launch = async (plain: boolean) => {
+  const launch = (plain: boolean) => withAdminLock(async () => {
     const hash = await relayer.writeContract({
       address: plain ? cfg.deployment.plainFactory : cfg.deployment.factory,
       abi: kinLaunchFactoryAbi,
@@ -200,7 +207,7 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
     if (rcpt.status !== "success") throw new Error(`createLaunch reverted (${hash})`);
     const [ev] = parseEventLogs({ abi: kinLaunchFactoryAbi, logs: rcpt.logs, eventName: "LaunchCreated" });
     return { hash, id: ev!.args.id as Hex, token: ev!.args.token as Address, key: ev!.args.key };
-  };
+  });
   const kin = await launch(false);
   const plain = await launch(true);
   emit({ type: "step", step: "launched", detail: "Kin pool and plain pool created", txs: [kin.hash, plain.hash] });
@@ -218,9 +225,33 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
   }
   emit({ type: "step", step: "window", detail: "launch window is open" });
 
-  // ---- 7. The attack: every wallet buys on both pools
-  const entry = (w: Address) => allowlist.entries.find((e) => e.wallet.toLowerCase() === w.toLowerCase())!;
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  // ---- 7. Permits for the Kin pool (signed by the hook's permit signer), then the attack on both pools
+  const signer = await pub.readContract({ address: cfg.deployment.kinHook, abi: kinHookAbi, functionName: "permitSigner" });
+  if ((signer as string).toLowerCase() !== relayer.account.address.toLowerCase()) {
+    throw new Error(`the sandbox hook trusts permit signer ${signer}, not the relayer ${relayer.account.address}`);
+  }
+  const permitDeadline = Number(windowStart) + cfg.windowLengthSec;
+  const proofs = new Map<string, Hex[]>();
+  for (const a of assigned) {
+    proofs.set(
+      a.wallet.toLowerCase(),
+      await signPermit(relayer.account, {
+        chainId: cfg.chainId,
+        hook: cfg.deployment.kinHook,
+        poolId: kin.id,
+        buyer: a.wallet,
+        entityId: a.entityId,
+        entityCap: BigInt(a.cap),
+        deadline: permitDeadline,
+      }),
+    );
+  }
+  emit({ type: "step", step: "permits", detail: `${cfg.bundleSize} buy permits signed, one per wallet, all for the same entity and limit` });
+  const entry = (w: Address) => {
+    const a = assigned.find((x) => x.wallet.toLowerCase() === w.toLowerCase())!;
+    return { entityId: a.entityId, cap: a.cap, proof: proofs.get(w.toLowerCase())! };
+  };
+  const deadline = BigInt(permitDeadline);
   const sends: { pool: "kin" | "plain"; index: number; wallet: Address; tx: Hex }[] = [];
   await Promise.all(
     wallets.map(async (w, index) => {
@@ -250,12 +281,15 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
     }),
   );
 
-  // Exact revert reason for one more Kin buy, simulated (not sent).
+  // Exact revert reason for one more Kin buy, simulated (not sent), from a wallet whose Kin buy was refused: it still
+  // holds that buy's ETH, so the simulation reaches the hook instead of failing on the balance.
   let rejectReason: string | null = null;
+  const refused = outcomes.find((o) => o.pool === "kin" && o.status === "rejected");
+  const probe = wallets[refused ? refused.index : 0]!;
   try {
-    const e = entry(wallets[0]!.account.address);
+    const e = entry(probe.account.address);
     await pub.simulateContract({
-      account: wallets[0]!.account,
+      account: probe.account,
       address: cfg.deployment.kinRouter,
       abi: [...kinRouterAbi, ...kinHookAbi, ...V4_WRAPPED_ERROR],
       functionName: "swapExactIn",
@@ -293,8 +327,11 @@ export async function runSandbox(cfg: SandboxConfig, emit: (e: SandboxEvent) => 
     plain: { landed: count("plain", "landed"), rejected: count("plain", "rejected"), poolId: plain.id, token: plain.token, launchTx: plain.hash },
     funder: funder.account.address,
     fundingTxs,
-    root: allowlist.root,
-    evidenceHash: allowlist.evidenceHash,
+    root: ZERO32,
+    evidenceHash: policy.hash,
+    mode: "instant",
+    entities: entityIds.size,
+    linkedWallets,
     entitySpentWei: entitySpent.toString(),
     vaultedTokens: vaulted.toString(),
     elapsedMs: Date.now() - t0,
@@ -312,8 +349,10 @@ async function sweep(pub: PublicClient, keys: Hex[], chain: Chain, rpcUrl: strin
       const w = createWalletClient({ chain, transport: http(rpcUrl), account: privateKeyToAccount(k) });
       const bal = await pub.getBalance({ address: w.account.address });
       const cost = TRANSFER_GAS * maxFee;
-      if (bal <= cost * 2n) return;
-      await w.sendTransaction({ to, value: bal - cost, gas: TRANSFER_GAS, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxFee / 10n || 1n });
+      // Leave twice the L2 gas behind: on Base (OP stack) the L1 data fee is charged on top of gas × price, so
+      // sending `balance - gas` exactly is rejected for insufficient funds and nothing comes back.
+      if (bal <= cost * 3n) return;
+      await w.sendTransaction({ to, value: bal - cost * 3n, gas: TRANSFER_GAS, maxFeePerGas: maxFee, maxPriorityFeePerGas: maxFee / 10n || 1n });
     }),
   );
 }

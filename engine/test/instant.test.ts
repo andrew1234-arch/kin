@@ -204,6 +204,14 @@ describe("LaunchService instant launch", () => {
     // Asking again returns the same entity (the cap is pinned onchain by the first buy).
     const again = await svc.permit(slug, bundle[1]!.address);
     expect(again.entityId).toBe(p2.entityId);
+    // Preview: what `late` would get now, without handing anything out.
+    const before = svc.permits(slug).length;
+    const pv = await svc.preview(slug, late.address);
+    expect(pv.assigned).toBe(false);
+    expect(pv.tier).toBe("linked");
+    expect(pv.entityId).toBe(p1.entityId);
+    expect(svc.permits(slug)).toHaveLength(before);
+    expect((await svc.preview(slug, bundle[0]!.address)).assigned).toBe(true);
     const pl = await svc.permit(slug, late.address);
     expect(pl.entityId).toBe(p1.entityId);
     expect(pl.cap).toBe(p1.cap);

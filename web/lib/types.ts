@@ -95,6 +95,10 @@ export interface SandboxResult {
   fundingTxs: string[];
   root: string;
   evidenceHash: string;
+  /** Runs since the sandbox moved to instant rules: permits instead of an allowlist. */
+  mode?: "instant";
+  entities?: number;
+  linkedWallets?: number;
   entitySpentWei: string;
   vaultedTokens: string;
   elapsedMs: number;
@@ -120,6 +124,8 @@ export interface LaunchView {
   slug: string;
   /** "instant": no registration; the engine traces funding when a wallet buys and signs a permit. */
   mode?: "allowlist" | "instant";
+  /** Created by the engine's demo keeper: limits sized for the test drive and the faucet. */
+  demo?: boolean;
   chainId: number;
   name: string;
   symbol: string;
@@ -145,6 +151,13 @@ export interface LaunchView {
     rootVersion: number;
   };
   instant?: null | { evidenceHash: string | null; wallets: number; entities: number; linkedWallets: number; freshWallets: number };
+  /** Demo launches: a hookless pool with the same token settings, for comparisons. */
+  plainTwin?: null | {
+    poolId: `0x${string}`;
+    key: { currency0: `0x${string}`; currency1: `0x${string}`; fee: number; tickSpacing: number; hooks: `0x${string}` };
+    token: string;
+    launchTx: string;
+  };
 }
 
 /** A signed buy permit for an instant launch; `proof` goes straight into the router call. */

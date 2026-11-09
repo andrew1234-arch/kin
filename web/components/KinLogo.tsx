@@ -14,7 +14,7 @@ export function KinLogo({ height = 26, className }: { height?: number; className
       aria-label="Kin"
       style={{ display: "block" }}
     >
-      <g transform="translate(0 4)">
+      <g transform="translate(-2.254 2.746) scale(1.10169)">
         <circle cx="32" cy="32" r="27" fill="none" stroke="var(--accent)" strokeWidth="5" />
         <g stroke="var(--accent)" strokeWidth="3" strokeLinecap="round">
           <line x1="32" y1="20" x2="21.6" y2="38" />

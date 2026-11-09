@@ -10,6 +10,10 @@ COPY engine/data/exclusions.json ./data/exclusions.json
 COPY engine/replay ./replay
 COPY contracts/deployments /app/contracts/deployments
 COPY contracts/launch-params.json /app/contracts/launch-params.json
+# Launch records to start a fresh volume with (railway-start.sh copies them when DATA_DIR is empty).
+COPY engine/seed ./seed
+COPY engine/scripts/railway-start.sh ./scripts/railway-start.sh
 ENV PORT=8787 DATA_DIR=/data
 EXPOSE 8787
-CMD ["bun", "run", "src/server.ts"]
+# Plain `bun run src/server.ts` for a hand-configured container; railway-start.sh applies the Base Sepolia settings.
+CMD ["bash", "scripts/railway-start.sh"]

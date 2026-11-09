@@ -10,6 +10,7 @@ import {
   statSync,
   unlinkSync,
   writeFileSync,
+  rmSync,
 } from "node:fs";
 import { join } from "node:path";
 import type { Address, Hex } from "viem";
@@ -29,6 +30,14 @@ export interface LaunchRecord {
    * "instant": no registration; each buyer's funding is traced when they buy and the engine signs a permit.
    */
   mode?: "allowlist" | "instant";
+  /** Created by the demo keeper (DEMO_LAUNCHES=1) so a test window is always open. */
+  demo?: boolean;
+  /** Created by a visitor through the site's launch form (PUBLIC_LAUNCHES=1). */
+  public?: boolean;
+  /** The wallet that created it from the site, when one was connected. */
+  creator?: Address;
+  /** Demo launches: a hookless pool with the same token settings, for "what would a plain pool do" comparisons. */
+  plainTwin?: { poolId: Hex; key: { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address }; token: Address; launchTx: Hex };
   /** Instant launches: every entity assignment, in issue order (append-only, public). */
   permits?: PermitAssignment[];
   /** Instant launches: the published policy file; its keccak256 is the evidenceHash committed onchain. */
@@ -108,6 +117,11 @@ export class LaunchStore {
     // Records written before registrations.jsonl existed keep their registrations inline until the next save.
     rec.registrations = existsSync(regs) ? readLines(regs) : (rec.registrations ?? []);
     return rec;
+  }
+
+  /** Delete a launch record (used when its deploy fails right after creation). */
+  remove(slug: string) {
+    rmSync(join(this.path(slug), ".."), { recursive: true, force: true });
   }
 
   /** Create a launch; fails if it already exists. */

@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { short } from "@/lib/format";
 
+const LABEL: Record<string, string> = { Injected: "Browser wallet" };
+
 export function WalletButton() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
   const { connectors, connect, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const [open, setOpen] = useState(false);
@@ -21,9 +24,31 @@ export function WalletButton() {
   if (!mounted) return <button className="btn btn-ghost btn-sm" disabled>Wallet</button>;
   if (isConnected && address) {
     return (
-      <button className="btn btn-ghost btn-sm mono" onClick={() => disconnect()} title="Disconnect">
-        {short(address)}
-      </button>
+      <div className="menu" ref={ref}>
+        <button className="btn btn-ghost btn-sm mono" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+          {connector?.type === "kinTestWallet" && <span className="wallet-tag">test</span>}
+          {short(address)}
+        </button>
+        {open && (
+          <div className="menu-list" role="menu">
+            <Link role="menuitem" href="/me" onClick={() => setOpen(false)}>
+              Profile
+            </Link>
+            <Link role="menuitem" href="/flow" onClick={() => setOpen(false)}>
+              Try it
+            </Link>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                disconnect();
+              }}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
   return (
@@ -42,7 +67,7 @@ export function WalletButton() {
                 connect({ connector: c });
               }}
             >
-              {c.name === "Injected" ? "Browser wallet" : c.name}
+              {LABEL[c.name] ?? c.name}
             </button>
           ))}
         </div>

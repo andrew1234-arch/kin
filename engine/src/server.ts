@@ -17,6 +17,11 @@
  *   POST /launches/:slug/disputes   {wallet, reason, signature}
  *   GET  /launches/:slug/verify/message?wallet=        Base Verify SIWE message to sign (verified-human tier)
  *   POST /launches/:slug/verify     {wallet, nonce, signature}  → verified | not_verified (+redirectUrl) | traits_not_satisfied
+ *   GET  /launches/:slug/preview/:wallet               instant launches: the entity this wallet would get now (nothing saved)
+ *   GET  /wallets/:wallet                              every launch this wallet has a limit in (profile page)
+ *   POST /launches             {name, symbol, capEth, windowMin, lockMin, creator?}  create and deploy (PUBLIC_LAUNCHES=1)
+ *   GET  /faucet                                       test-ETH faucet: address, balance, drip size
+ *   POST /faucet               {wallet}                send a drip of test ETH on the launch chain (rate limited)
  *   POST /sandbox/runs                                start an attack run (rate limited)
  *   GET  /sandbox/runs/:id                            run state + events
  *   GET  /sandbox/runs/:id/stream                     server-sent events
@@ -38,11 +43,16 @@ import { launchRuntime } from "./runtime";
 import { sandboxConfigFromEnv } from "./sandbox/config";
 import { runSandbox, type SandboxEvent, type SandboxResult } from "./sandbox/relayer";
 import { scanToken, type ScanResult } from "./scan/scan";
+import { Faucet, FaucetError, faucetFromEnv } from "./faucet";
+import { startDemoKeeper } from "./launch/demo";
+import { createPublicLaunch, publicLaunchesEnabled, type PublicLaunchInput } from "./launch/public";
 import { envNum, envStr } from "./env";
 
 const PORT = envNum("PORT", 8787, { min: 1, integer: true });
 const CORS = envStr("CORS_ORIGIN") ?? "*";
 const launches = launchRuntime();
+const faucet: Faucet | null = faucetFromEnv();
+if (envStr("DEMO_LAUNCHES") === "1") startDemoKeeper(launches);
 
 // ------------------------------------------------------------------ helpers
 
@@ -208,7 +218,35 @@ const server = Bun.serve({
           launches: !!envStr("LAUNCH_RPC_URL"),
           baseVerify: !!envStr("BASE_VERIFY_SECRET_KEY"),
           sandbox: !!envStr("SANDBOX_RPC_URL") && !!envStr("SANDBOX_RELAYER_KEY"),
+          faucet: !!faucet,
+          demoLaunches: envStr("DEMO_LAUNCHES") === "1",
+          publicLaunches: publicLaunchesEnabled(),
         });
+      }
+
+      // ---- faucet
+      if (parts[0] === "faucet" && !parts[1]) {
+        if (!faucet) return fail(503, "The test-ETH faucet is not configured on this server");
+        if (req.method === "GET") return json(await faucet.info());
+        if (req.method === "POST") {
+          if (rateLimited(`faucet:${ip}`, 6, 60_000)) return fail(429, "slow down");
+          const body = (await req.json()) as { wallet: string };
+          return json(await faucet.drip(body.wallet ?? "", ip));
+        }
+      }
+
+      // ---- one wallet across every launch (profile)
+      if (parts[0] === "wallets" && parts[1] && !parts[2] && req.method === "GET") {
+        if (!isAddress(parts[1])) return fail(400, "not a wallet address");
+        const w = getAddress(parts[1]);
+        const rows = launches.store.list().flatMap((r) => {
+          const p = (r.permits ?? []).find((x) => x.wallet === w);
+          const registered = r.registrations.some((x) => x.wallet === w);
+          if (!p && !registered) return [];
+          const members = p ? (r.permits ?? []).filter((x) => x.entityId === p.entityId).length : null;
+          return [{ slug: r.slug, name: r.name, symbol: r.symbol, mode: r.mode ?? "allowlist", demo: !!r.demo, registered, permit: p ? { ...p, entityMembers: members } : null }];
+        });
+        return json({ wallet: w, launches: rows });
       }
 
       // ---- scan
@@ -225,6 +263,11 @@ const server = Bun.serve({
       // ---- launches
       if (parts[0] === "launches") {
         const svc = launches.service;
+        if (!parts[1] && req.method === "POST") {
+          if (rateLimited(`create:${ip}`, 3, 60_000)) return fail(429, "slow down");
+          const rec = await createPublicLaunch(launches, (await req.json()) as PublicLaunchInput, ip);
+          return json(svc.publicView(rec), 201);
+        }
         if (!parts[1]) return json(launches.store.list().map((r) => svc.publicView(r)));
         const slug = parts[1];
         if (!parts[2] && req.method === "GET") return json(svc.publicView(svc.get(slug)));
@@ -255,6 +298,10 @@ const server = Bun.serve({
           return json(await svc.permit(slug, body.wallet));
         }
         if (parts[2] === "permits" && req.method === "GET") return json(svc.permits(slug));
+        if (parts[2] === "preview" && parts[3] && req.method === "GET") {
+          if (rateLimited(`preview:${ip}`, 40, 60_000)) return fail(429, "slow down");
+          return json(await svc.preview(slug, parts[3]));
+        }
         if (parts[2] === "allowlist" && req.method === "GET") return json(await svc.entries(slug));
         if (parts[2] === "wallets" && parts[3] && req.method === "GET") return json(await svc.walletStatus(slug, parts[3]));
         if (parts[2] === "proof" && parts[3] && req.method === "GET") return json(await svc.proof(slug, parts[3]));
@@ -303,7 +350,7 @@ const server = Bun.serve({
 
       return fail(404, "not found");
     } catch (e) {
-      if (e instanceof LaunchError) return fail(e.status, e.message);
+      if (e instanceof LaunchError || e instanceof FaucetError) return fail(e.status, e.message);
       console.error(e);
       return fail(500, (e as Error).message);
     }

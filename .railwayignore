@@ -1,0 +1,15 @@
+# Railway builds only the engine image (engine/Dockerfile); keep uploads small and secrets out.
+web/
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/src/
+contracts/test/
+contracts/script/
+contracts/broadcast/
+reports/
+brand/
+**/node_modules/
+**/.env
+**/.env.*
+engine/data/runtime/

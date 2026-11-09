@@ -123,7 +123,7 @@ export function LimitComparison() {
           <strong>1 × limit</strong>
         </div>
         <figcaption>
-          The hook keeps one running total per entity. A Merkle proof binds each wallet to its entity and cap.
+          The hook keeps one running total per entity. Each wallet's signed permit names its entity and limit.
         </figcaption>
       </figure>
     </div>

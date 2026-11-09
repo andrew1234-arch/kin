@@ -19,6 +19,9 @@ import { chainFor } from "../sandbox/relayer";
 import type { LaunchService } from "./service";
 import { launchParams } from "../launchParams";
 import { dataDir } from "../paths";
+import { withAdminLock } from "../adminLock";
+
+export { withAdminLock };
 
 /** Launch-side onchain actions, shared by the admin CLI and the local seeding script. */
 export function adminClients(opts: { rpcUrl: string; chainId: number; adminKey: Hex; deploymentPath: string }) {
@@ -31,8 +34,11 @@ export function adminClients(opts: { rpcUrl: string; chainId: number; adminKey: 
     hook: getAddress(dep.kinHook) as Address,
     /** The hook's minimum review period (seconds), from the deployment file; 0 if it doesn't record one. */
     minReviewPeriod: Number(dep.minReviewPeriod ?? 0),
+    /** The hook's window and lock bounds (seconds), when the deployment file records them. */
+    limits: dep.minWindow !== undefined ? { minWindow: Number(dep.minWindow), maxWindow: Number(dep.maxWindow), maxLock: Number(dep.maxLock) } : null,
   };
 }
+
 type Clients = ReturnType<typeof adminClients>;
 
 /**
@@ -40,7 +46,11 @@ type Clients = ReturnType<typeof adminClients>;
  * Instant launches commit root 0 and the hash of their policy file; the window opens after `delayAfterBuildSec`
  * (at least the hook's minimum review period), and buyers get permits from the engine.
  */
-export async function deployLaunch(svc: LaunchService, slug: string, c: Clients) {
+export function deployLaunch(svc: LaunchService, slug: string, c: Clients) {
+  return withAdminLock(() => deployLaunchNow(svc, slug, c));
+}
+
+async function deployLaunchNow(svc: LaunchService, slug: string, c: Clients) {
   const rec = svc.get(slug);
   const instant = rec.mode === "instant";
   if (!instant && !rec.allowlist) throw new Error("build the allowlist first");

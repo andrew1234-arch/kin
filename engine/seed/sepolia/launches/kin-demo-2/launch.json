@@ -1,0 +1,88 @@
+{
+  "slug": "kin-demo-2",
+  "chainId": 84532,
+  "name": "Kin Demo 2",
+  "symbol": "KDEMO",
+  "mode": "instant",
+  "demo": true,
+  "registrationClosesAt": 1794236825,
+  "tiers": {
+    "capWei": "300000000000000",
+    "freshPoolCapWei": "3000000000000000",
+    "verifiedCapWei": "300000000000000",
+    "freshMaxNonce": 0,
+    "freshMaxAgeHours": 0
+  },
+  "window": {
+    "delayAfterBuildSec": 0,
+    "lengthSec": 10800,
+    "lockSec": 600
+  },
+  "createdAt": 1794236825,
+  "verifications": [],
+  "disputes": [],
+  "overrides": [],
+  "allowlist": null,
+  "onchain": {
+    "poolId": "0x271b22361247db2ecc44403215d459dc6b37683b7ec1b2c4a4ce802d9bee3e06",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0xD2F19FA6bfFF77Ba4d256d80d72f96DE7465B610",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0"
+    },
+    "token": "0xD2F19FA6bfFF77Ba4d256d80d72f96DE7465B610",
+    "launchTx": "0x1cdd473f3924dabdf80049d53179b2f0efc7924be0295152b65197d27e4524b4",
+    "windowStart": 1794238749,
+    "windowEnd": 1794249549,
+    "lockDuration": 600,
+    "rootVersion": 0
+  },
+  "permits": [
+    {
+      "wallet": "0x092DAE28Fd501400d23B61262CE5dD1a11BCcdA9",
+      "entityId": "0x1a79194978636a05162ee6ce3ef008159878807b0b99e9478395b0efe5a98851",
+      "tier": "aged",
+      "cap": "300000000000000",
+      "links": [],
+      "at": 1794239417,
+      "nonce": 2,
+      "firstFundedAt": 1794239389
+    },
+    {
+      "wallet": "0xB6cbCE68c061d227F6AD82C73517319Efe963d08",
+      "entityId": "0x1a79194978636a05162ee6ce3ef008159878807b0b99e9478395b0efe5a98851",
+      "tier": "linked",
+      "cap": "300000000000000",
+      "links": [
+        {
+          "from": "0x092DAE28Fd501400d23B61262CE5dD1a11BCcdA9",
+          "to": "0xB6cbCE68c061d227F6AD82C73517319Efe963d08",
+          "txHash": "0x12ebc8cb19b660b5ee2480631713b2e4a7e1dc32da1aa867101b67ada77c3d92",
+          "hop": 1
+        }
+      ],
+      "via": "0x092DAE28Fd501400d23B61262CE5dD1a11BCcdA9",
+      "at": 1794239419,
+      "nonce": 0,
+      "firstFundedAt": 1794239394
+    }
+  ],
+  "instant": {
+    "policyJson": "{\"launch\":{\"chainId\":84532,\"slug\":\"kin-demo-2\"},\"method\":{\"exclusions\":{\"commit\":\"d9b21aefeded56f7fce7208d6fa173d128526c1b\",\"count\":2340,\"extra\":[\"0xf76c1dbbb621315a30f0b7f6c20e2324371a46b3\"],\"file\":\"data/csv/accounts.csv\",\"license\":\"MIT (Copyright (c) 2022 Dawson Botsford)\",\"repo\":\"https://github.com/dawsbot/eth-labels\"},\"fundingTokens\":[],\"fundingWindowHours\":\"whole history\",\"heuristic\":\"weighted links (Nuno engine port): wallet funds wallet 1.0; same hop-1 funder within 24 h 1.0; shared funding ancestor within 2 hops 0.8; same-block early buy 0.5; merge at 1.0; exchanges excluded; hubs > 50 wallets ignored unless they pay like a farm; funding (native ETH, or a funding token sent by a wallet) traced within 2 hops when the wallet asks to buy\"},\"permitSigner\":\"0x5606da7e22630e960d75955Ce710622B322a9b16\",\"rules\":[\"No registration. A wallet's funding is traced when it asks to buy.\",\"A wallet linked by funding (2 hops, exchanges excluded) to an earlier buyer or its funders joins that entity and its cap.\",\"A fresh wallet (no history, or first funded within freshMaxAgeHours) joins the launch's shared fresh pool.\",\"Any other wallet is its own entity with the normal cap.\",\"Every assignment is public at /launches/<slug>/permits; each window buy's entity is in KinHook's WindowBuy event.\"],\"schema\":\"kin-instant-policy/1\",\"tiers\":{\"capWei\":\"300000000000000\",\"freshMaxAgeHours\":0,\"freshMaxNonce\":0,\"freshPoolCapWei\":\"3000000000000000\"}}",
+    "evidenceHash": "0xa7afb5a995306c75c2ed7060dc92fcc7ac8163f13d05ad56a20d2e60712835e1"
+  },
+  "plainTwin": {
+    "poolId": "0xf66c861ff5b4fd579a9cc152eb118750489f56fd6f00cb3168354d6ad55cdd5d",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0xAEd9F1413fBFe65A829dD10424134E730564a493",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x0000000000000000000000000000000000000000"
+    },
+    "token": "0xAEd9F1413fBFe65A829dD10424134E730564a493",
+    "launchTx": "0x7763539313086e1df1baa71fdc21671a6fb4a8accc3ca9e580ab30ccfaf8f1fc"
+  }
+}

@@ -15,3 +15,6 @@ engine/data/runtime/
 
 # written by `next dev` on every run
 web/AGENTS.md
+
+# The faucet log records requester IPs: never commit or ship it
+engine/seed/**/faucet.jsonl

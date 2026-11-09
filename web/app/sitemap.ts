@@ -9,7 +9,7 @@ const STATIC: { path: string; priority: number; changeFrequency: MetadataRoute.S
   { path: "/how-it-works", priority: 0.9, changeFrequency: "monthly" },
   { path: "/launch/new", priority: 0.8, changeFrequency: "monthly" },
   { path: "/scan", priority: 0.9, changeFrequency: "weekly" },
-  { path: "/sandbox", priority: 0.8, changeFrequency: "daily" },
+  { path: "/flow", priority: 0.9, changeFrequency: "daily" },
   { path: "/launch", priority: 0.8, changeFrequency: "daily" },
   { path: "/replay", priority: 0.7, changeFrequency: "weekly" },
 ];

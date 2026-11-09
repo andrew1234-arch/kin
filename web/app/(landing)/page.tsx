@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { KinFacts } from "@/components/KinFacts";
 import { HeroScene } from "@/components/landing/HeroScene";
 import { LaunchesPreview } from "@/components/landing/LaunchesPreview";
 import { RevealObserver } from "@/components/landing/Reveal";
@@ -39,48 +40,25 @@ const CREATOR_SETTINGS = [
 
 const TOOLS = [
   {
+    href: "/try",
+    name: "Try it",
+    body: "Play the bundler: split test ETH across three wallets and watch Kin give them one limit. No wallet extension needed.",
+    tag: "Base Sepolia, about 2 minutes",
+    icon: "M5 12.5 9.5 17 19 7.5",
+  },
+  {
+    href: "/sandbox",
+    name: "Sandbox",
+    body: "Watch one funder send twenty wallets at a Kin pool and a plain pool at once, and compare what lands.",
+    tag: "Base Sepolia, automated",
+    icon: "M9.5 3.5h5M10.5 3.5v5.5L5.6 17.7A2 2 0 0 0 7.3 20.5h9.4a2 2 0 0 0 1.7-2.8L13.5 9V3.5M8 14.5h8",
+  },
+  {
     href: "/scan",
     name: "Kin Scan",
     body: "Paste any token on Base and see which of its early buyers were funded by the same source.",
     tag: "Reads Base mainnet",
     icon: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM16.2 16.2 20.5 20.5",
-  },
-  {
-    href: "/sandbox",
-    name: "Sandbox",
-    body: "Watch one bundler hit a Kin pool and a plain pool at the same time, and compare what lands.",
-    tag: "Runs on a test chain",
-    icon: "M9.5 3.5h5M10.5 3.5v5.5L5.6 17.7A2 2 0 0 0 7.3 20.5h9.4a2 2 0 0 0 1.7-2.8L13.5 9V3.5M8 14.5h8",
-  },
-  {
-    href: "/replay",
-    name: "Replay",
-    body: "How often past Base launches had several wallets funded by one source among their early buyers.",
-    tag: "Measured on Base mainnet",
-    icon: "M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v3.7h3.7M12 8v4l2.5 2",
-  },
-];
-
-const FAQ = [
-  {
-    q: "Is Kin live on Base mainnet?",
-    a: "No. Launches run on Base Sepolia, a test network, and every number on this site says which chain it comes from. Kin Scan and Replay read Base mainnet.",
-  },
-  {
-    q: "Does Kin stop bundling?",
-    a: "No. It makes bundling expensive and visible. Wallets funded through an exchange, or aged in advance with unrelated funds, are hard to link, and Kin says so.",
-  },
-  {
-    q: "What if Kin links my wallet to someone else?",
-    a: "Funding links are evidence, not identity. Every limit Kin hands out is public with the funding link behind it, so a wrong link is visible to everyone. Creators who want a review step can run an allowlist launch instead: wallets register first and can dispute a link before the window opens.",
-  },
-  {
-    q: "What is a fresh wallet?",
-    a: "A wallet with no history, or one younger than the launch allows. Fresh wallets share one pooled limit, so a farm of new wallets cannot multiply its allowance.",
-  },
-  {
-    q: "How do I launch a token with Kin?",
-    a: "Set your launch on the Launch with Kin page. It checks your settings against the limits of the deployed hook and gives you the exact commands to create and run the launch.",
   },
 ];
 
@@ -117,8 +95,8 @@ export default function Home() {
                 Launch with Kin
                 <Arrow />
               </Link>
-              <Link className="btn btn-ghost btn-lg" href="/launch">
-                Explore launches
+              <Link className="btn btn-ghost btn-lg" href="/try">
+                Try it: no wallet needed
               </Link>
             </div>
           </div>
@@ -273,7 +251,7 @@ export default function Home() {
           <header className="sec-head reveal">
             <p className="eyebrow">Tools</p>
             <h2 id="tools-title" className="display-2">
-              Check any launch yourself.
+              Try it, watch it, check it.
             </h2>
           </header>
           <div className="tools reveal">
@@ -299,25 +277,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* faq */}
-      <section id="faq" className="s-light sec sec-flat sec-alt" aria-labelledby="faq-title">
-        <div className="wrap faq">
-          <header className="reveal">
-            <p className="eyebrow">Questions</p>
-            <h2 id="faq-title" className="display-2">
-              The honest answers.
+      {/* what Kin does and doesn't */}
+      <section id="facts" className="s-light sec sec-flat sec-alt" aria-labelledby="facts-title">
+        <div className="wrap">
+          <header className="sec-head reveal">
+            <p className="eyebrow">The honest version</p>
+            <h2 id="facts-title" className="display-2">
+              What Kin does, and what it doesn&apos;t.
             </h2>
           </header>
-          <div className="faq-list reveal">
-            {FAQ.map((f) => (
-              <details key={f.q}>
-                <summary>
-                  {f.q}
-                  <span className="faq-plus" aria-hidden="true" />
-                </summary>
-                <p>{f.a}</p>
-              </details>
-            ))}
+          <div className="reveal">
+            <KinFacts title="In short" />
           </div>
         </div>
       </section>
@@ -333,8 +303,8 @@ export default function Home() {
               Launch with Kin
               <Arrow />
             </Link>
-            <Link className="btn btn-ghost btn-lg" href="/launch">
-              Explore launches
+            <Link className="btn btn-ghost btn-lg" href="/try">
+              Try it first
             </Link>
           </div>
         </div>

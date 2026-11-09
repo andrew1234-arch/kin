@@ -120,6 +120,8 @@ function ScanView({ r }: { r: ScanResult }) {
         />
       </div>
 
+      <BuyerMap r={r} />
+
       {r.entities.length === 0 ? (
         <Notice>
           No multi-wallet entities among the first {s.earlyBuyers} buyers: no two of them share a funder within{" "}
@@ -268,5 +270,58 @@ function EntityCard({ e, decimals, capEth }: { e: ScanResult["entities"][number]
         </ul>
       </details>
     </div>
+  );
+}
+
+/**
+ * Every early buyer in buy order: wallets that share a funder (one entity) are filled, new wallets are dashed,
+ * independent ones are grey, and buys Kin's limit would have refused are crossed out.
+ */
+function BuyerMap({ r }: { r: ScanResult }) {
+  const blocked = new Set(r.entities.flatMap((e) => e.kin.blockedTxs.map((t) => t.toLowerCase())));
+  const multi = new Map(r.entities.map((e, i) => [e.id, i + 1]));
+  const linkedCount = r.buyers.filter((b) => multi.has(b.entity)).length;
+  return (
+    <figure className="card buyer-map">
+      <figcaption>
+        <strong>The first {r.buyers.length} buyers, in order.</strong>{" "}
+        <span className="muted">
+          {linkedCount > 0
+            ? `${linkedCount} of them were funded by a source they share with another buyer.`
+            : "None of them share a funder."}
+        </span>
+      </figcaption>
+      <div className="bm-dots">
+        {r.buyers.map((b, i) => {
+          const ent = multi.get(b.entity);
+          const cut = blocked.has(b.firstBuyTx.toLowerCase());
+          const kind = ent ? "linked" : b.tier === "fresh" ? "fresh" : "own";
+          return (
+            <span
+              key={b.wallet}
+              className={`bm-dot is-${kind}${cut ? " is-cut" : ""}`}
+              style={{ animationDelay: `${Math.min(i, 80) * 18}ms` }}
+              title={`#${i + 1} ${b.wallet}${ent ? ` · entity ${b.entity}` : ""}${cut ? " · Kin would refuse this buy" : ""}`}
+            >
+              {ent ? ent : ""}
+            </span>
+          );
+        })}
+      </div>
+      <ul className="bm-legend small muted">
+        <li>
+          <span className="bm-dot is-linked">1</span> shares a funder with other buyers (number = entity)
+        </li>
+        <li>
+          <span className="bm-dot is-fresh" /> brand-new wallet
+        </li>
+        <li>
+          <span className="bm-dot is-own" /> independent
+        </li>
+        <li>
+          <span className="bm-dot is-linked is-cut" /> Kin would refuse its first buy
+        </li>
+      </ul>
+    </figure>
   );
 }

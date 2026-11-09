@@ -1,0 +1,82 @@
+{
+  "slug": "night-shift",
+  "chainId": 84532,
+  "name": "Night Shift",
+  "symbol": "SHIFT",
+  "mode": "instant",
+  "registrationClosesAt": 1794145836,
+  "tiers": {
+    "capWei": "2000000000000000",
+    "freshPoolCapWei": "10000000000000000",
+    "verifiedCapWei": "2000000000000000",
+    "freshMaxNonce": 0,
+    "freshMaxAgeHours": 24
+  },
+  "window": {
+    "delayAfterBuildSec": 1800,
+    "lengthSec": 86400,
+    "lockSec": 3600
+  },
+  "createdAt": 1794145836,
+  "verifications": [],
+  "disputes": [],
+  "overrides": [],
+  "allowlist": null,
+  "onchain": {
+    "poolId": "0xd9a3978df0dd252c36ba6ca005f5644eb103782f5ee39c13cb898592e748989a",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0x4731bb0002bc28950645C03f2Aec4159bad683CF",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0"
+    },
+    "token": "0x4731bb0002bc28950645C03f2Aec4159bad683CF",
+    "launchTx": "0xe48709dcba0a6710dc936128b047cf4a93e87d7dcf70b6853eae42e8436e6ba7",
+    "windowStart": 1794147758,
+    "windowEnd": 1794234158,
+    "lockDuration": 3600,
+    "rootVersion": 0
+  },
+  "permits": [
+    {
+      "wallet": "0x5606da7e22630e960d75955Ce710622B322a9b16",
+      "entityId": "0x1fd220cf538aee7b1449107ecf4042fccedf3e71a945e37d263a9e47010b413c",
+      "tier": "fresh",
+      "cap": "10000000000000000",
+      "links": [
+        {
+          "from": "0x532FdB40C802943DF65f78aE8C1219250f65d17a",
+          "to": "0x5606da7e22630e960d75955Ce710622B322a9b16",
+          "txHash": "0x7e2aeeb3d1b58fffdbd034ad0ce2b313c822ebd84a7136286b9313cdd20a89e4",
+          "hop": 1
+        },
+        {
+          "from": "0x04f672cf84c25e5f533aA09c7d9bC2C592610F13",
+          "to": "0x532FdB40C802943DF65f78aE8C1219250f65d17a",
+          "txHash": "0xd262474cc52ccd9f46cd8254a4d2abb09e36fc525edb36fed8ad8207cc3a9cde",
+          "hop": 2
+        },
+        {
+          "from": "0x62D87BE71C6B1A86FeB973A070593146c7eC06Ed",
+          "to": "0x532FdB40C802943DF65f78aE8C1219250f65d17a",
+          "txHash": "0x0b4201e531e617060748ea556d33c0810376a5dd582b42d16c2b4baa3cad7375",
+          "hop": 2
+        },
+        {
+          "from": "0x3e34b27a9bf37D8424e1a58aC7fc4D06914B76B9",
+          "to": "0x532FdB40C802943DF65f78aE8C1219250f65d17a",
+          "txHash": "0x452392be9b1fa397b0bff107fffc4afde22915989a063e377b55f9a52753e0db",
+          "hop": 2
+        }
+      ],
+      "at": 1794146007,
+      "nonce": 16,
+      "firstFundedAt": 1794127898
+    }
+  ],
+  "instant": {
+    "policyJson": "{\"launch\":{\"chainId\":84532,\"slug\":\"night-shift\"},\"method\":{\"exclusions\":{\"commit\":\"d9b21aefeded56f7fce7208d6fa173d128526c1b\",\"count\":2340,\"extra\":[],\"file\":\"data/csv/accounts.csv\",\"license\":\"MIT (Copyright (c) 2022 Dawson Botsford)\",\"repo\":\"https://github.com/dawsbot/eth-labels\"},\"fundingTokens\":[],\"fundingWindowHours\":\"whole history\",\"heuristic\":\"weighted links (Nuno engine port): wallet funds wallet 1.0; same hop-1 funder within 24 h 1.0; shared funding ancestor within 2 hops 0.8; same-block early buy 0.5; merge at 1.0; exchanges excluded; hubs > 50 wallets ignored unless they pay like a farm; funding (native ETH, or a funding token sent by a wallet) traced within 2 hops when the wallet asks to buy\"},\"permitSigner\":\"0x5606da7e22630e960d75955Ce710622B322a9b16\",\"rules\":[\"No registration. A wallet's funding is traced when it asks to buy.\",\"A wallet linked by funding (2 hops, exchanges excluded) to an earlier buyer or its funders joins that entity and its cap.\",\"A fresh wallet (no history, or first funded within freshMaxAgeHours) joins the launch's shared fresh pool.\",\"Any other wallet is its own entity with the normal cap.\",\"Every assignment is public at /launches/<slug>/permits; each window buy's entity is in KinHook's WindowBuy event.\"],\"schema\":\"kin-instant-policy/1\",\"tiers\":{\"capWei\":\"2000000000000000\",\"freshMaxAgeHours\":24,\"freshMaxNonce\":0,\"freshPoolCapWei\":\"10000000000000000\"}}",
+    "evidenceHash": "0x078a7f8495ce44b4b0b072765b1e38b86120e70cfe9e36a1cc761b58871038f3"
+  }
+}

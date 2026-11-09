@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Notice, Tx } from "@/components/bits";
+import { FlowDiagram, type FlowBuy } from "@/components/FlowDiagram";
+import { PoolChart, type Slot } from "@/components/PoolChart";
 import { api, ApiError, post } from "@/lib/api";
 import { API_URL, LAUNCH_EXPLORER } from "@/lib/config";
 import { eth, short } from "@/lib/format";
 import type { SandboxEvent, SandboxResult, SandboxRun } from "@/lib/types";
-
-type Slot = { tx: string; status: "pending" | "landed" | "rejected" } | null;
 
 interface View {
   steps: { step: string; detail: string; txs?: string[] }[];
@@ -93,7 +93,18 @@ export function SandboxClient() {
 
   const r = view.result;
   const explorer = LAUNCH_EXPLORER;
-  const count = (slots: Slot[], s: "landed" | "rejected") => slots.filter((x) => x?.status === s).length;
+  const has = (step: string) => view.steps.some((s) => s.step === step);
+  const funded = has("funded");
+  const linked = has("limits");
+  const kinLanded = view.kin.filter((x) => x?.status === "landed").length;
+  const capBuys = r?.expectedKinMax ?? 10;
+  const flowBuy = (x: Slot): FlowBuy =>
+    !x ? "idle" : x.status === "landed" ? "landed" : x.status === "rejected" ? "blocked" : x.status === "pending" ? "pending" : "idle";
+  const caption = running
+    ? (view.steps[view.steps.length - 1]?.detail ?? "Starting the run…")
+    : r
+      ? `Kin let ${r.kin.landed} of ${r.bundleSize} buys through. The normal pool let ${r.plain.landed} through.`
+      : "Press the button to send one funder's 20 wallets at both pools.";
 
   return (
     <>
@@ -106,34 +117,39 @@ export function SandboxClient() {
       {notice && <Notice tone="warn">{notice}</Notice>}
       {view.error && <Notice tone="error">The run failed: {view.error}</Notice>}
 
+      <div className="card sbx-flow">
+        <FlowDiagram
+          source="Funder"
+          sourceSub="1 wallet"
+          wallets={view.kin.map((x) => ({ label: "", funded, linked, buy: flowBuy(x) }))}
+          fill={Math.min(1, kinLanded / capBuys)}
+          capLabel={r ? `limit ${eth(r.entityCapWei, 6)} ETH` : "shared limit"}
+        />
+        <p className={`sbx-caption${running ? " is-live" : ""}`} aria-live="polite">
+          {caption}
+        </p>
+      </div>
+
       <div className="versus" style={{ marginTop: 16 }}>
-        <Pool
-          title="Kin pool"
-          subtitle={r ? `one entity, one ${eth(r.entityCapWei)} ETH cap` : "entity cap enforced by the hook"}
+        <PoolChart
+          title="With Kin"
+          subtitle={r ? `one entity, one ${eth(r.entityCapWei, 6)} ETH limit` : "one limit per entity, enforced by the hook"}
           slots={view.kin}
-          landed={count(view.kin, "landed")}
           explorer={explorer}
           tone="good"
         />
-        <Pool
-          title="Plain pool"
-          subtitle="same token settings, no hook"
-          slots={view.plain}
-          landed={count(view.plain, "landed")}
-          explorer={explorer}
-          tone="bad"
-        />
+        <PoolChart title="Without Kin" subtitle="a normal pool, same token settings" slots={view.plain} explorer={explorer} tone="bad" />
       </div>
 
       {r && (
         <div className="card" style={{ marginTop: 14 }}>
           <h3>Result</h3>
           <p>
-            The bundle landed <strong>{r.kin.landed} of {r.bundleSize}</strong> buys on the Kin pool (its cap allows{" "}
-            {r.expectedKinMax} × {eth(r.perWalletWei)} ETH) and <strong>{r.plain.landed} of {r.bundleSize}</strong> on the
+            The bundle landed <strong>{r.kin.landed} of {r.bundleSize}</strong> buys on the Kin pool (its one limit allows{" "}
+            {r.expectedKinMax} × {eth(r.perWalletWei, 6)} ETH) and <strong>{r.plain.landed} of {r.bundleSize}</strong> on the
             plain pool.
           </p>
-          {r.kin.rejectReason && (
+          {r.kin.rejectReason && /EntityCap/i.test(r.kin.rejectReason) && (
             <p className="small muted break">
               The next Kin buy reverts with <span className="mono">{r.kin.rejectReason.replace(/\(0x[0-9a-f]{64}/i, "(entity")}</span>.
             </p>
@@ -149,10 +165,23 @@ export function SandboxClient() {
             <dd>
               <Tx hash={r.plain.launchTx} explorer={explorer} />
             </dd>
-            <dt>Allowlist root</dt>
-            <dd className="mono break">{r.root}</dd>
-            <dt>Evidence hash</dt>
-            <dd className="mono break">{r.evidenceHash}</dd>
+            {r.mode === "instant" ? (
+              <>
+                <dt>Entities</dt>
+                <dd>
+                  {r.entities} for {r.bundleSize} wallets ({r.linkedWallets} linked by funding)
+                </dd>
+                <dt>Rules hash</dt>
+                <dd className="mono break">{r.evidenceHash}</dd>
+              </>
+            ) : (
+              <>
+                <dt>Allowlist root</dt>
+                <dd className="mono break">{r.root}</dd>
+                <dt>Evidence hash</dt>
+                <dd className="mono break">{r.evidenceHash}</dd>
+              </>
+            )}
             <dt>Tokens vaulted</dt>
             <dd>locked until the window ends plus the lock period</dd>
             <dt>Run time</dt>
@@ -183,36 +212,5 @@ export function SandboxClient() {
         <Notice>No run yet. The first run takes about half a minute on Base Sepolia.</Notice>
       )}
     </>
-  );
-}
-
-function Pool(p: { title: string; subtitle: string; slots: Slot[]; landed: number; explorer: string; tone: "good" | "bad" }) {
-  return (
-    <div className="card">
-      <div className="pool-head">
-        <div>
-          <h3 style={{ margin: 0 }}>{p.title}</h3>
-          <div className="small muted">{p.subtitle}</div>
-        </div>
-        <div className="pool-score" style={{ color: `var(--${p.tone})` }}>
-          {p.landed}/{p.slots.length}
-        </div>
-      </div>
-      <div className="slots">
-        {p.slots.map((s, i) => {
-          const cls = `slot ${s ? `slot-${s.status}` : ""}`;
-          const label = s?.status === "landed" ? "✓" : s?.status === "rejected" ? "✕" : i + 1;
-          return s && p.explorer ? (
-            <a key={i} className={cls} href={`${p.explorer}/tx/${s.tx}`} target="_blank" rel="noreferrer" title={`wallet ${i + 1}: ${s.status}`}>
-              {label}
-            </a>
-          ) : (
-            <span key={i} className={cls} title={s ? `wallet ${i + 1}: ${s.status}` : `wallet ${i + 1}`}>
-              {label}
-            </span>
-          );
-        })}
-      </div>
-    </div>
   );
 }

@@ -51,6 +51,9 @@ export interface CreateLaunchInput {
   window: LaunchRecord["window"];
   minBalanceWei?: string;
   mode?: LaunchRecord["mode"];
+  demo?: boolean;
+  public?: boolean;
+  creator?: Address;
 }
 
 export class LaunchService {
@@ -356,24 +359,7 @@ export class LaunchService {
 
     let assignment = (rec.permits ?? []).find((p) => p.wallet === wallet);
     if (!assignment) {
-      const rpc = this.d.rpc();
-      const code = await rpc.call<Hex>("eth_getCode", [wallet, "latest"]);
-      if (code !== "0x" && !code.startsWith("0xef0100")) {
-        throw new LaunchError("smart-contract wallets can't buy in an instant window: use an EOA", 403);
-      }
-      const head = BigInt(await rpc.call<Hex>("eth_blockNumber", []));
-      const blockTime = await measureBlockTime(rpc, head);
-      const windowBlocks =
-        blockTime > 0 && this.d.fundingWindowHours > 0 ? BigInt(Math.ceil((this.d.fundingWindowHours * 3600) / blockTime)) : head;
-      const traced = await traceFunding(this.d.history(rpc), [{ wallet, beforeBlock: head }], {
-        windowBlocks,
-        excluded: this.d.excluded,
-        maxHops: 2,
-        fundingTokens: this.d.fundingTokens ?? [],
-        rpc,
-      });
-      const nonce = Number(BigInt(await rpc.call<Hex>("eth_getTransactionCount", [wallet, "latest"])));
-      const firstFundedAt = traced.firstFundedAt.get(wallet.toLowerCase());
+      const { nonce, firstFundedAt, edges } = await this.traceCandidate(wallet);
       // Assigned under the lock, against every assignment made so far (including ones made while tracing).
       assignment = this.update(slug, (cur) => {
         const list = cur.permits ?? [];
@@ -385,7 +371,7 @@ export class LaunchService {
           freshMaxNonce: cur.tiers.freshMaxNonce,
           freshMaxAgeHours: cur.tiers.freshMaxAgeHours ?? 0,
         };
-        const a = assignInstant(slug, list, { wallet, nonce, firstFundedAt, edges: traced.edges }, tiers, this.now(), this.d.excluded);
+        const a = assignInstant(slug, list, { wallet, nonce, firstFundedAt, edges }, tiers, this.now(), this.d.excluded);
         const rowNew: PermitAssignment = { wallet, ...a, at: this.now(), nonce, ...(firstFundedAt !== undefined ? { firstFundedAt } : {}) };
         cur.permits = [...list, rowNew];
         return rowNew;
@@ -407,6 +393,52 @@ export class LaunchService {
     const members = (this.get(slug).permits ?? []).filter((p) => p.entityId === assignment!.entityId).length;
     const all = this.get(slug).permits ?? [];
     return { ...assignment, tier: effectiveTier(assignment, all), deadline, proof, entityMembers: members };
+  }
+
+  /** A wallet's funding as an instant launch sees it: hop-1/hop-2 edges (exclusions applied later), nonce, first funding. */
+  private async traceCandidate(wallet: Address) {
+    const rpc = this.d.rpc();
+    const code = await rpc.call<Hex>("eth_getCode", [wallet, "latest"]);
+    if (code !== "0x" && !code.startsWith("0xef0100")) {
+      throw new LaunchError("smart-contract wallets can't buy in an instant window: use an EOA", 403);
+    }
+    const head = BigInt(await rpc.call<Hex>("eth_blockNumber", []));
+    const blockTime = await measureBlockTime(rpc, head);
+    const windowBlocks =
+      blockTime > 0 && this.d.fundingWindowHours > 0 ? BigInt(Math.ceil((this.d.fundingWindowHours * 3600) / blockTime)) : head;
+    const traced = await traceFunding(this.d.history(rpc), [{ wallet, beforeBlock: head }], {
+      windowBlocks,
+      excluded: this.d.excluded,
+      maxHops: 2,
+      fundingTokens: this.d.fundingTokens ?? [],
+      rpc,
+    });
+    const nonce = Number(BigInt(await rpc.call<Hex>("eth_getTransactionCount", [wallet, "latest"])));
+    return { nonce, firstFundedAt: traced.firstFundedAt.get(wallet.toLowerCase()), edges: traced.edges };
+  }
+
+  /**
+   * Instant launches: what the engine would assign this wallet right now, without handing anything out. A wallet
+   * that already has an assignment gets it back (assigned: true). Nothing is saved, so asking changes no one's cap.
+   */
+  async preview(slug: string, walletIn: string) {
+    if (!isAddress(walletIn)) throw new LaunchError("invalid wallet");
+    const wallet = getAddress(walletIn);
+    const rec = this.get(slug);
+    if (rec.mode !== "instant") throw new LaunchError("this launch uses an allowlist", 404);
+    const all = rec.permits ?? [];
+    const have = all.find((p) => p.wallet === wallet);
+    const members = (id: Hex, extra: number) => all.filter((p) => p.entityId === id).length + extra;
+    if (have) return { ...have, tier: effectiveTier(have, all), assigned: true, entityMembers: members(have.entityId, 0) };
+    const { nonce, firstFundedAt, edges } = await this.traceCandidate(wallet);
+    const tiers = {
+      capWei: BigInt(rec.tiers.capWei),
+      freshPoolCapWei: BigInt(rec.tiers.freshPoolCapWei),
+      freshMaxNonce: rec.tiers.freshMaxNonce,
+      freshMaxAgeHours: rec.tiers.freshMaxAgeHours ?? 0,
+    };
+    const a = assignInstant(slug, all, { wallet, nonce, firstFundedAt, edges }, tiers, this.now(), this.d.excluded);
+    return { wallet, ...a, nonce, assigned: false, entityMembers: members(a.entityId, 1) };
   }
 
   /** Every assignment handed out for an instant launch, in order. */
@@ -501,6 +533,10 @@ export class LaunchService {
     return {
       slug: rec.slug,
       mode: rec.mode ?? "allowlist",
+      demo: !!rec.demo,
+      public: !!rec.public,
+      creator: rec.creator ?? null,
+      plainTwin: rec.plainTwin ?? null,
       chainId: rec.chainId,
       name: rec.name,
       symbol: rec.symbol,

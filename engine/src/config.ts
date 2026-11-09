@@ -1,6 +1,13 @@
-import { getAddress, isAddress, parseEther, type Address } from "viem";
+import { getAddress, isAddress, parseEther, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { loadExclusions } from "./data/exclusions";
 import { ConfigError, envNum, envPositiveBigInt, envStr } from "./env";
+
+/** Address of the test-ETH faucet (FAUCET_KEY), lowercased; null when the faucet is off. */
+export function faucetAddress(): string | null {
+  const k = envStr("FAUCET_KEY");
+  return k ? privateKeyToAccount(k as Hex).address.toLowerCase() : null;
+}
 
 /** An ETH amount from an override or the environment; a malformed amount is a configuration error. */
 function ethSetting(key: string, override: string | undefined, def: string): bigint {
@@ -37,6 +44,9 @@ export function scanOptionsFromEnv(
     .split(",")
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean);
+  // Kin's own test-ETH faucet is a shared public source, like an exchange: funding from it links no one.
+  const faucet = faucetAddress();
+  if (faucet && !extra.includes(faucet)) extra.push(faucet);
   extra.forEach((a) => ex.set.add(a));
   return {
     earlyBuyers: overrides.earlyBuyers ?? envNum("EARLY_BUYERS", DEFAULT_SCAN_OPTIONS.earlyBuyers, { min: 1, integer: true }),

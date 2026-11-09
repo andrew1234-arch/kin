@@ -7,10 +7,10 @@ import { KinLogo } from "@/components/KinLogo";
 import { WalletButton } from "@/components/WalletButton";
 
 const LINKS = [
+  { href: "/flow", label: "The flow" },
   { href: "/how-it-works", label: "How it works" },
   { href: "/launch", label: "Launches" },
   { href: "/scan", label: "Kin Scan" },
-  { href: "/sandbox", label: "Sandbox" },
 ];
 
 /**
@@ -91,6 +91,9 @@ export function SiteNav({ surface }: { surface?: "light" }) {
           ))}
           <Link href="/replay" onClick={() => setOpen(false)}>
             Replay
+          </Link>
+          <Link href="/me" onClick={() => setOpen(false)}>
+            Profile
           </Link>
         </nav>
         <div className="site-sheet-end">

@@ -1,8 +1,8 @@
 import { defineChain, getAddress, type Address } from "viem";
 
 /**
- * Runtime configuration. Nothing here is hardcoded: endpoints, chain and contract addresses come
- * from NEXT_PUBLIC_* variables set at deploy time (see web/.env.example).
+ * Runtime configuration. Endpoints, chain and contract addresses come
+ * from NEXT_PUBLIC_* variables set at deploy time (see web/.env.example); Base chains fall back to public RPCs.
  */
 export const API_URL = (process.env.NEXT_PUBLIC_KIN_API ?? "").replace(/\/$/, "");
 /**
@@ -14,12 +14,15 @@ export const LAUNCH_MIRROR = (process.env.NEXT_PUBLIC_LAUNCH_MIRROR ?? "").repla
 /** Slippage tolerance for window buys, in basis points of the quoted output. */
 export const SLIPPAGE_BPS = Number(process.env.NEXT_PUBLIC_SLIPPAGE_BPS || 300);
 
-export const LAUNCH_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 84532);
-export const LAUNCH_RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "";
+export const LAUNCH_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 84532);
+/** Public endpoints for the Base chains, used when the deploy doesn't set its own. */
+const PUBLIC_RPC: Record<number, string> = { 84532: "https://sepolia.base.org", 8453: "https://mainnet.base.org" };
+const PUBLIC_EXPLORER: Record<number, string> = { 84532: "https://sepolia.basescan.org", 8453: "https://basescan.org" };
+export const LAUNCH_RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || PUBLIC_RPC[LAUNCH_CHAIN_ID] || "";
 /** Block explorer for the launch chain (Base Sepolia), e.g. its base URL without a trailing slash. */
-export const LAUNCH_EXPLORER = (process.env.NEXT_PUBLIC_EXPLORER_URL ?? "").replace(/\/$/, "");
+export const LAUNCH_EXPLORER = (process.env.NEXT_PUBLIC_EXPLORER_URL || PUBLIC_EXPLORER[LAUNCH_CHAIN_ID] || "").replace(/\/$/, "");
 /** Block explorer for Base mainnet, used by Kin Scan links. */
-export const SCAN_EXPLORER = (process.env.NEXT_PUBLIC_SCAN_EXPLORER_URL ?? "").replace(/\/$/, "");
+export const SCAN_EXPLORER = (process.env.NEXT_PUBLIC_SCAN_EXPLORER_URL || PUBLIC_EXPLORER[8453]).replace(/\/$/, "");
 
 /** Deploy-time limits the KinHook enforces (contracts/script/DeployKin.s.sol), when the deployment file has them. */
 export interface HookLimits {

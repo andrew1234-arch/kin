@@ -1,21 +1,6 @@
-import { SandboxClient } from "./SandboxClient";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata = { title: "Kin attack sandbox" };
-
+/** The sandbox is part of The flow now. */
 export default function SandboxPage() {
-  return (
-    <>
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">Tool · Test chain</p>
-          <h1>Attack sandbox</h1>
-          <p className="lede">
-            One funder funds 20 fresh wallets. All 20 register, then all 20 try to buy the moment the window opens: once on
-            a Kin pool, once on a plain pool with the same settings. Every step is a real transaction on Base Sepolia.
-          </p>
-        </div>
-      </header>
-      <SandboxClient />
-    </>
-  );
+  permanentRedirect("/flow#scale");
 }

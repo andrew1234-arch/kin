@@ -1,0 +1,47 @@
+{
+  "slug": "first-light",
+  "chainId": 84532,
+  "name": "First Light",
+  "symbol": "LIGHT",
+  "mode": "instant",
+  "public": true,
+  "registrationClosesAt": 1794238581,
+  "tiers": {
+    "capWei": "1000000000000000",
+    "freshPoolCapWei": "1000000000000000",
+    "verifiedCapWei": "1000000000000000",
+    "freshMaxNonce": 0,
+    "freshMaxAgeHours": 168
+  },
+  "window": {
+    "delayAfterBuildSec": 0,
+    "lengthSec": 10800,
+    "lockSec": 600
+  },
+  "createdAt": 1794238581,
+  "verifications": [],
+  "disputes": [],
+  "overrides": [],
+  "allowlist": null,
+  "onchain": {
+    "poolId": "0xef945dff1c1e2256ee4ccb44ce3cc82217dfd966000f89ba3514073404dc5273",
+    "key": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0x8D0244c9c3D100C908081568a807C641a5bD077b",
+      "fee": 10000,
+      "tickSpacing": 200,
+      "hooks": "0x4Aec96A3CCAe1bb7C05dd56F98B2aE54FF8b00c0"
+    },
+    "token": "0x8D0244c9c3D100C908081568a807C641a5bD077b",
+    "launchTx": "0x8be097683436222f2ace1c4cc12dbce1bf2ba87132d519209f03652efd6e6d18",
+    "windowStart": 1794240506,
+    "windowEnd": 1794251306,
+    "lockDuration": 600,
+    "rootVersion": 0
+  },
+  "permits": [],
+  "instant": {
+    "policyJson": "{\"launch\":{\"chainId\":84532,\"slug\":\"first-light\"},\"method\":{\"exclusions\":{\"commit\":\"d9b21aefeded56f7fce7208d6fa173d128526c1b\",\"count\":2340,\"extra\":[\"0xf76c1dbbb621315a30f0b7f6c20e2324371a46b3\"],\"file\":\"data/csv/accounts.csv\",\"license\":\"MIT (Copyright (c) 2022 Dawson Botsford)\",\"repo\":\"https://github.com/dawsbot/eth-labels\"},\"fundingTokens\":[],\"fundingWindowHours\":\"whole history\",\"heuristic\":\"weighted links (Nuno engine port): wallet funds wallet 1.0; same hop-1 funder within 24 h 1.0; shared funding ancestor within 2 hops 0.8; same-block early buy 0.5; merge at 1.0; exchanges excluded; hubs > 50 wallets ignored unless they pay like a farm; funding (native ETH, or a funding token sent by a wallet) traced within 2 hops when the wallet asks to buy\"},\"permitSigner\":\"0x5606da7e22630e960d75955Ce710622B322a9b16\",\"rules\":[\"No registration. A wallet's funding is traced when it asks to buy.\",\"A wallet linked by funding (2 hops, exchanges excluded) to an earlier buyer or its funders joins that entity and its cap.\",\"A fresh wallet (no history, or first funded within freshMaxAgeHours) joins the launch's shared fresh pool.\",\"Any other wallet is its own entity with the normal cap.\",\"Every assignment is public at /launches/<slug>/permits; each window buy's entity is in KinHook's WindowBuy event.\"],\"schema\":\"kin-instant-policy/1\",\"tiers\":{\"capWei\":\"1000000000000000\",\"freshMaxAgeHours\":168,\"freshMaxNonce\":0,\"freshPoolCapWei\":\"1000000000000000\"}}",
+    "evidenceHash": "0xb3fcbf63a8226e88ff82de41e6d8a63e9b26e14ee7a750b954e525629540353f"
+  }
+}

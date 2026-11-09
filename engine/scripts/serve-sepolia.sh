@@ -43,6 +43,15 @@ export SANDBOX_DEPLOYMENT="${SANDBOX_DEPLOYMENT:-$ROOT/contracts/deployments/845
 export SANDBOX_PER_WALLET_ETH="${SANDBOX_PER_WALLET_ETH:-0.00002}" SANDBOX_MAX_RUNS_PER_DAY="${SANDBOX_MAX_RUNS_PER_DAY:-12}"
 export SANDBOX_EXPLORER_URL="${SANDBOX_EXPLORER_URL:-https://sepolia.basescan.org}"
 
+# Test-ETH faucet: its own key (derived from the deployer key unless FAUCET_KEY is set), so judges' drips never
+# eat the deployer's gas for demo launches. Fund it once: cast send <faucet address> --value 0.01ether.
+# Demo keeper: a new instant launch before the last one's window closes, so a window is always open.
+export FAUCET_KEY="${FAUCET_KEY:-$(cast keccak "kin-faucet:$DEPLOYER_PRIVATE_KEY")}" DEMO_LAUNCHES="${DEMO_LAUNCHES:-1}"
+# Public launches: anyone can launch a token from the site's form (rate limited; see src/launch/public.ts).
+export PUBLIC_LAUNCHES="${PUBLIC_LAUNCHES:-1}"
+FAUCET_ADDR="$(cast wallet address --private-key "$FAUCET_KEY")"
+echo "faucet: $FAUCET_ADDR holds $(cast balance --ether "$FAUCET_ADDR" --rpc-url "$BASE_SEPOLIA_RPC_URL") ETH"
+
 export DATA_DIR="${DATA_DIR:-$ROOT/engine/data/runtime/sepolia}" PORT="${PORT:-8788}" TRUST_PROXY="${TRUST_PROXY:-1}"
 mkdir -p "$DATA_DIR"
 cd "$ROOT/engine"

@@ -17,6 +17,7 @@ export function SiteFooter() {
 
         <nav aria-label="Product">
           <p className="eyebrow">Product</p>
+          <Link href="/flow">The flow</Link>
           <Link href="/launch">Launches</Link>
           <Link href="/launch/new">Launch with Kin</Link>
           <Link href="/how-it-works">How it works</Link>
@@ -24,8 +25,8 @@ export function SiteFooter() {
         <nav aria-label="Tools">
           <p className="eyebrow">Tools</p>
           <Link href="/scan">Kin Scan</Link>
-          <Link href="/sandbox">Sandbox</Link>
           <Link href="/replay">Replay</Link>
+          <Link href="/me">Profile</Link>
         </nav>
         <nav aria-label="Source">
           <p className="eyebrow">Source</p>

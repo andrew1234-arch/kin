@@ -18,14 +18,19 @@ const FILTERS: { key: string; label: string; phases: Phase[] }[] = [
 export default function Launches() {
   const [list, setList] = useState<LaunchView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<string | null>(null);
   const now = useNow();
   useEffect(() => {
     api<LaunchView[]>("/launches")
       .then((l) => setList([...l].sort((a, b) => b.createdAt - a.createdAt)))
       .catch((e) => setError(e.message));
   }, []);
-  const f = FILTERS.find((x) => x.key === filter)!;
+  // Open launches first when there are any: ended demo launches pile up over a week.
+  useEffect(() => {
+    if (filter || !list || !now) return;
+    setFilter(list.some((l) => ["registration", "window"].includes(phaseOf(l, now))) ? "open" : "all");
+  }, [filter, list, now]);
+  const f = FILTERS.find((x) => x.key === (filter ?? "all"))!;
   const shown = list && now ? list.filter((l) => !f.phases.length || f.phases.includes(phaseOf(l, now))) : list;
 
   return (
@@ -35,7 +40,8 @@ export default function Launches() {
           <p className="eyebrow">Launches</p>
           <h1>Fair launches on Kin</h1>
           <p className="lede">
-            Register a wallet, see your limit, buy in the window. Wallets funded by the same source share one limit.
+            Connect, see your limit, buy in the window. Wallets funded by the same source share one limit, enforced in the
+            pool. New here? <Link href="/flow">Take the two-minute test drive</Link>: test wallets and test ETH included.
           </p>
         </div>
         <Link className="btn btn-primary" href="/launch/new">
