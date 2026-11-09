@@ -931,7 +931,13 @@ a.launch-card:hover { border-color: var(--faint); transform: translateY(-2px); }
 .sbx-flow .fd { max-width: 860px; margin: 0 auto; }
 .sbx-caption { margin: 12px 0 0; text-align: center; font-size: 15.5px; color: var(--muted); min-height: 1.5em; }
 .sbx-caption.is-live { color: var(--accent); }
-.hiw-flow { margin: 28px 0 8px; padding: clamp(16px, 2.6vw, 32px); max-width: 920px; }
+.hiw-head-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
+.hiw-head-text { min-width: 0; }
+.hiw-flow { margin: 0; padding: clamp(16px, 2.2vw, 28px); min-width: 0; }
+@media (max-width: 960px) {
+  .hiw-head-grid { grid-template-columns: minmax(0, 1fr); }
+  .hiw-flow { margin-top: 8px; }
+}
 .hiw-flow .fd-demo { max-width: 760px; margin: 0 auto; }
 .tier-fig { display: block; width: 100%; max-width: 260px; height: auto; margin-bottom: 14px; }
 .tf-edge { fill: none; stroke: currentColor; opacity: 0.35; stroke-width: 1.5; }

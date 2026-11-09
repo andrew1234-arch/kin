@@ -106,6 +106,8 @@ export default function HowItWorksPage() {
     <>
       <RevealObserver />
       <header className="hiw-head wrap">
+        <div className="hiw-head-grid">
+        <div className="hiw-head-text">
         <p className="eyebrow">
           <span className="dot" /> How it works
         </p>
@@ -114,9 +116,6 @@ export default function HowItWorksPage() {
           One person can split their money across many wallets and buy most of a launch. Kin groups wallets that were funded
           from the same place and gives each group one limit, enforced by the pool itself.
         </p>
-        <div className="card hiw-flow">
-          <FlowDemo />
-        </div>
         <nav className="hiw-toc" aria-label="On this page">
           <a href="#problem">The problem</a>
           <a href="#idea">The idea</a>
@@ -126,6 +125,11 @@ export default function HowItWorksPage() {
           <a href="#check">Check it yourself</a>
           <a href="#limits">Limits</a>
         </nav>
+        </div>
+        <div className="card hiw-flow">
+          <FlowDemo />
+        </div>
+        </div>
       </header>
 
       <section id="problem" className="s-light sec" aria-labelledby="problem-title">
