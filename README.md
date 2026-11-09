@@ -7,7 +7,7 @@
 Wallets funded by the same source share one buy limit, and the pool itself enforces it through a Uniswap v4 hook.
 Splitting money across ten wallets no longer buys ten times more.
 
-- **Live site:** https://kin-flame-seven.vercel.app (launches run on Base Sepolia with test ETH)
+- **Live site:** https://kinverse.vercel.app (launches run on Base Sepolia with test ETH)
 - **How to test it:** [TEST.md](TEST.md), about 10 minutes, nothing to install
 - **Source:** this repository (contracts, engine and site)
 
@@ -257,11 +257,13 @@ Against Base Sepolia instead (needs `DEPLOYER_PRIVATE_KEY` in `contracts/.env`):
 
 1. **Contracts.** Fund a throwaway deployer with Base Sepolia ETH and deploy (see `contracts/README.md`). The
    deployer is also the permit signer unless you set one.
-2. **Engine on Railway.** The repository has `railway.json` (builds `engine/Dockerfile`) and `.railwayignore`.
+2. **Engine on Railway.** No GitHub connection needed: `railway up` uploads the folder (`.railwayignore` keeps the
+   web app, contract sources and `.env` files out) and builds `engine/Dockerfile`.
    ```bash
    railway login && railway init            # or railway link
+   railway add --service engine && railway service link engine
    railway volume add --mount-path /data    # launches, permits and the faucet log live here
-   ./engine/scripts/railway-env.sh          # copies DEPLOYER_PRIVATE_KEY, FAUCET_KEY and RPC URLs without printing them
+   ./engine/scripts/railway-env.sh          # copies DEPLOYER_PRIVATE_KEY, FAUCET_KEY, RPC URLs and RAILWAY_DOCKERFILE_PATH
    railway up && railway domain
    ```
    `engine/scripts/railway-start.sh` applies the same settings as `serve-sepolia.sh` and seeds an empty volume

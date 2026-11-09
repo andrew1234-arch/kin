@@ -9,9 +9,10 @@ load_env "$ROOT/contracts/.env" "$ROOT/engine/.env"
 : "${DEPLOYER_PRIVATE_KEY:?set DEPLOYER_PRIVATE_KEY in contracts/.env}"
 # Same faucet key serve-sepolia.sh derives, so the hosted faucet is the wallet already funded.
 FAUCET_KEY="${FAUCET_KEY:-$(cast keccak "kin-faucet:$DEPLOYER_PRIVATE_KEY")}"
-args=(--set "DEPLOYER_PRIVATE_KEY=$DEPLOYER_PRIVATE_KEY" --set "FAUCET_KEY=$FAUCET_KEY")
+# RAILWAY_DOCKERFILE_PATH: Railway's builder ignores railway.json for CLI uploads and can't find engine/Dockerfile alone.
+args=(--set "DEPLOYER_PRIVATE_KEY=$DEPLOYER_PRIVATE_KEY" --set "FAUCET_KEY=$FAUCET_KEY" --set "RAILWAY_DOCKERFILE_PATH=engine/Dockerfile")
 for k in BASE_SEPOLIA_RPC_URL BASE_RPC_URL BASE_VERIFY_SECRET_KEY CORS_ORIGIN; do
   [ -n "${!k:-}" ] && args+=(--set "$k=${!k}")
 done
 "$RAILWAY" variables "${args[@]}" --skip-deploys >/dev/null
-echo "set on Railway: DEPLOYER_PRIVATE_KEY FAUCET_KEY$(for k in BASE_SEPOLIA_RPC_URL BASE_RPC_URL BASE_VERIFY_SECRET_KEY CORS_ORIGIN; do [ -n "${!k:-}" ] && printf ' %s' "$k"; done)"
+echo "set on Railway: DEPLOYER_PRIVATE_KEY FAUCET_KEY RAILWAY_DOCKERFILE_PATH$(for k in BASE_SEPOLIA_RPC_URL BASE_RPC_URL BASE_VERIFY_SECRET_KEY CORS_ORIGIN; do [ -n "${!k:-}" ] && printf ' %s' "$k"; done)"

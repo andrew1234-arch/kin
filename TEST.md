@@ -4,7 +4,7 @@ A guide for judges and anyone else who wants to check that Kin does what it says
 Sepolia** with test ETH. You need a browser and nothing else: the site has a built-in test wallet and its own
 faucet. About 10 minutes for tests 1 to 4.
 
-**Live site:** https://kin-flame-seven.vercel.app
+**Live site:** https://kinverse.vercel.app
 
 **The one thing to look for:** one person gets **one** buy limit, however many wallets they use. Wallets funded
 from the same place share a single limit, and the pool itself refuses anything over it.
