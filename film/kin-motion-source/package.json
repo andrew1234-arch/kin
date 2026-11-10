@@ -1,0 +1,32 @@
+{
+  "name": "kin-motion-source",
+  "private": true,
+  "version": "1.0.0",
+  "description": "KIN: The Fair Starting Line. 30-second brand film (Remotion + React + TypeScript + SVG).",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "sound": "python3 scripts/sound.py public/kin-sound.wav",
+    "render:silent": "node scripts/render.mjs out/kin-brand-film-30s-silent.mp4",
+    "mux": "bash scripts/mux.sh",
+    "verify": "bash scripts/verify.sh",
+    "docs": "node scripts/docs.cjs",
+    "stills": "node scripts/stills.mjs",
+    "build": "npm run typecheck && npm run sound && npm run render:silent && npm run mux && npm run verify && npm run docs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.542",
+    "@remotion/cli": "4.0.542",
+    "@remotion/fonts": "4.0.542",
+    "@remotion/motion-blur": "4.0.542",
+    "@remotion/renderer": "4.0.542",
+    "geist": "1.9.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.542"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}
