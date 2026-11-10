@@ -89,7 +89,14 @@ body{font-family:Geist;color:#102F59;background:#fff}
       (f) => `<figure><img src="file://${files[f]}"><figcaption><span class="mono">${tc(f)} · f${f}</span><span class="mono blue">${sceneOf(f).n} ${sceneOf(f).name}</span></figcaption></figure>`,
     )
     .join("");
-  await page.setContent(`<html><head><style>${fontCss}
+  // Pages are written to disk and opened as file:// so local frames and fonts are allowed to load.
+  const open = async (name, html) => {
+    const file = path.join(OUT, name);
+    fs.writeFileSync(file, html);
+    await page.goto("file://" + file, { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+  };
+  await open("contact-sheet.html", `<html><head><style>${fontCss}
     body{padding:56px;width:2400px}
     header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:28px}
     h1{font-weight:500;font-size:44px;letter-spacing:-.04em}
@@ -114,7 +121,7 @@ body{font-family:Geist;color:#102F59;background:#fff}
         <div><p class="mono blue">Composition</p><p>${s.composition}</p><p class="mono blue">Motion direction</p><p>${s.motion}</p><p class="mono blue">Sound</p><p>${s.sound}</p></div>
       </div></section>`,
   ).join("");
-  await page.setContent(`<html><head><style>${fontCss}
+  await open("storyboard.html", `<html><head><style>${fontCss}
     @page{size:1600px 900px;margin:0}
     section{width:1600px;height:900px;padding:56px 64px;page-break-after:always;display:flex;flex-direction:column;gap:26px}
     .head{display:flex;justify-content:space-between;border-bottom:2px solid #102F59;padding-bottom:12px}
