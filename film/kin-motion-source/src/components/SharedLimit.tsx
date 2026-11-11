@@ -15,6 +15,7 @@ export const SharedLimit = ({
   fillColor = C.blue,
   draw = 1,
   pulse = 0,
+  trackColor = C.navy,
 }: {
   x: number;
   y: number;
@@ -29,6 +30,7 @@ export const SharedLimit = ({
   draw?: number;
   /** 0→1 enforcement pulse: a brief outward echo of the ring. */
   pulse?: number;
+  trackColor?: string;
 }) => {
   if (r <= 0.5) return null;
   const circ = 2 * Math.PI * r;
@@ -41,7 +43,7 @@ export const SharedLimit = ({
           cy={y}
           r={r}
           fill="none"
-          stroke={C.navy}
+          stroke={trackColor}
           strokeWidth={stroke}
           opacity={trackOpacity * track}
           strokeDasharray={`${circ * draw} ${circ}`}

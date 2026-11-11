@@ -14,46 +14,46 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const SCENES = [
   {
-    n: "01", name: "The visual identity", range: [0, 240], keys: [40, 150, 222],
-    story: "A white canvas. Navy organic forms (pebbles, capsules, discs, rings, eggs) arrive one after another from the centre outwards, each stretching and then relaxing into place; small dots pop in between. The field turns a few degrees as one, then swells until navy floods the frame.",
-    composition: "Full-bleed pattern on a loose grid; white negative space between forms until the flood.",
-    motion: "Grow on expo-out, settle on quint in-out, a stagger of ~3.4 frames by distance from centre; dots on a soft back-out. The swell is the scene's single big gesture.",
-    sound: "Air and a low drone; soft plucks as forms land; a low swell into the flood.",
+    n: "01", name: "The pattern", range: [0, 225], keys: [60, 150, 205],
+    story: "Bars 1-2. Navy organic forms (pebbles, capsules, discs, rings, eggs) burst out of the centre in a fast wave, stretching and snapping into place; dots pop in on 16th notes. A design-tool selection inspects one pebble (SHAPE PEBBLE, ROT …°) as the field turns, then everything swells until navy floods the frame.",
+    composition: "Full-bleed pattern under the KIN HUD: crop marks, title, bar and beat counter, scene, frame and timecode.",
+    motion: "Grow on expo-out with a stretch-and-settle, ~2 frames apart by distance from centre; the swell accelerates (expo-in) into the cut. Camera motion blur throughout.",
+    sound: "Air and a Dmaj9 pad; a pluck per form; 16th-note pops; a riser into bar 3.",
   },
   {
-    n: "02", name: "The problem", range: [240, 480], keys: [300, 420, 470],
-    story: "The flood opens: most forms fly outward and vanish, ten of them morph into identical wallet slabs that land in a row. “One person. / Multiple wallets.” rises through masks. The wallets drift apart; labels count 01 to 10; their clasps turn blue together and faint lines run down towards one hidden point below the frame.",
-    composition: "Oversized two-line headline top left on the 12-column grid; the row of ten across the lower third.",
-    motion: "Radial exits on expo-in; arcing morphs into the row; directional spread; typed mono labels.",
-    sound: "A muted pulse at 120 BPM; a tick as each wallet lands; typed clicks.",
+    n: "02", name: "The problem", range: [225, 450], keys: [260, 330, 420],
+    story: "Bars 3-4. The flood bursts on the downbeat; ten forms snap into ten identical wallets. ONE PERSON. whips in on beat 2, MULTIPLE WALLETS. on beat 3, and the site's corner brackets close around WALLETS on beat 4. Labels count 01-10 on 16ths; the clasps turn blue together; dotted lines run to one point below the frame.",
+    composition: "Heavy uppercase Geist headline, top left; the row of ten across the lower third.",
+    motion: "Radial burst on expo-in; whip-ins from the right with a horizontal stretch that snaps back; brackets on a small overshoot.",
+    sound: "An impact on the cut; a half-time kick; a tick per wallet; typed clicks.",
   },
   {
-    n: "03", name: "The discovery", range: [480, 780], keys: [540, 680, 760],
-    story: "The ten wallets sweep round together into a circle (their order is kept, so nothing crosses). From the point the hint lines pointed to, the funder rises into the centre. Funding links draw out to every wallet one by one, a blue pulse running along each. “Ten wallets. / One funder.”",
-    composition: "Headline left, network right of centre; a mono caption: linked by funding, not by identity.",
-    motion: "Polar sweep (radius and angle interpolated, with an outward bulge); funder on back-out; links drawn with a leading dot.",
-    sound: "A sweep as the wallets circle; a low bloom as the funder lands; one rising ping per link.",
+    n: "03", name: "The link", range: [450, 788], keys: [500, 640, 760],
+    story: "Bars 5-7. The wallets sweep round together into a circle (order kept, nothing crosses). The funder lands on the downbeat of bar 6, and a funding link draws to each wallet on every 8th note while a selection box counts LINKS 01/10 → 10/10. TEN WALLETS. ONE [FUNDER]. Caption: linked by funding, not by identity.",
+    composition: "Headline left, network right; the inspector reads FUNDER 01.",
+    motion: "Polar sweep with an outward bulge; funder on back-out with a camera kick; links drawn with a leading dot.",
+    sound: "Four-on-the-floor, offbeat hats, pluck bass; a sweep; a thud and a bell as the funder lands; a ping per link.",
   },
   {
-    n: "04", name: "The Kin mechanism", range: [780, 1140], keys: [880, 1000, 1050],
-    story: "A ring draws around the whole group: one shared limit. Wallets buy in turn; each buy travels out to the ring and adds to one blue arc, whoever sent it. When the arc closes, the next buy reaches the ring and is refused: it bounces back hollow while the ring flashes. “One shared / limit.” then “Enforced onchain.” with: a Uniswap v4 hook in the pool refuses any buy over the limit.",
-    composition: "The ring is the single strong boundary; a mono readout counts the limit used; the refusal is labelled beside it.",
-    motion: "Buys on expo-in, the arc on expo-out; the refusal is a reversal plus an outward echo of the ring, not a warning panel.",
-    sound: "The ring's rising draw; a precise click per buy, pitch rising as the limit fills; a firm, damped refusal.",
+    n: "04", name: "The limit", range: [788, 1125], keys: [870, 1000, 1060],
+    story: "Bars 8-10. Hard cut to navy. A ring draws around the group: ONE SHARED [LIMIT]. Buys land on the beat, each adding to one arc while LIMIT USED counts up; five buys fill it; the sixth reaches the ring and is refused: it bounces back hollow as the ring flashes. Bar 10: hard cut to blue, ENFORCED / ONCHAIN. stamped in Geist Black, with: a Uniswap v4 hook in the pool refuses any buy over the limit.",
+    composition: "Navy field, white network, light-blue limit; then one blue bar with type only.",
+    motion: "Buys on expo-in, the arc on expo-out; the refusal is a reversal plus an outward echo; the stamp whips in and holds.",
+    sound: "Impact on the cut; a click per buy, pitch rising; a damped thud for the refusal; the stamp: drums drop to a boom and a crack, then a riser.",
   },
   {
-    n: "05", name: "The fair starting line", range: [1140, 1440], keys: [1200, 1330, 1420],
-    story: "The network contracts into a compact emblem: one ring, one funder, ten wallets. A single line draws across the frame and the pattern returns: forms rise out of the line and stand on it side by side, the emblem among them. “One funder. / One limit. / One fair starting line.” The line turns blue under the last words.",
-    composition: "Three-line headline dominating the upper half; the starting line at the lower third; generous white space.",
-    motion: "Emblem moves on quint in-out; forms rise through a clip at the line with slight overshoot; gentle breathing at rest.",
-    sound: "A warm D(add9) pad: the lift; a shimmer as the line draws; soft plucks as forms rise.",
+    n: "05", name: "The fair starting line", range: [1125, 1462], keys: [1160, 1300, 1420],
+    story: "Bars 11-13. Hard cut back to white. The network contracts into one emblem; a line draws across the frame and the pattern rises out of it on 8th notes, standing side by side with the emblem. ONE FUNDER. ONE LIMIT. ONE [FAIR] STARTING LINE. The line turns blue under the last words.",
+    composition: "Four-line headline dominating the upper half; the starting line at the lower third.",
+    motion: "Emblem on quint in-out; forms rise through a clip at the line with a small overshoot; gentle breathing at rest.",
+    sound: "The lift: full groove with claps, a 16th arpeggio, a warm pad; the line's shimmer.",
   },
   {
-    n: "06", name: "The brand reveal", range: [1440, 1800], keys: [1500, 1610, 1799],
-    story: "The forms on the line fly out to become a frame of the pattern around the edges. The emblem's ring shrinks into the Kin mark's ring; the ten wallets merge into its three dots; the triangle draws between them. The wordmark draws stroke by stroke from the original logo. “Fair token launches on Base”, “One fair starting line.”, and the address with its status (Base Sepolia testnet).",
-    composition: "The original logo (brand/kin-logo-on-light.svg) centred; the pattern frames it; the final frame stands alone as a brand visual.",
-    motion: "Arcing morphs into the frame; wallets to dots on quint in-out; strokes drawn on expo-out; a slight final breath on the logo.",
-    sound: "A gathering swirl; three bell tones as the three dots form; the Kin motif (a rising triad and its octave); a long resolve.",
+    n: "06", name: "Kin", range: [1462, 1800], keys: [1500, 1600, 1799],
+    story: "Bars 14-16. The forms on the line fly out into a frame of the pattern; the ring shrinks into the Kin mark's ring and the ten wallets merge into its three dots, one dot on each of beats 2, 3 and 4; the triangle draws; the mark locks on the downbeat of bar 15 and the wordmark draws stroke by stroke from the original logo. FAIR TOKEN LAUNCHES ON BASE · One fair starting line. · the address and status (Base Sepolia testnet). The HUD strips back to crop marks and timecode.",
+    composition: "The original logo (brand/kin-logo-on-light.svg) centred in a frame of the pattern: a standalone brand frame.",
+    motion: "Arcing morphs into the frame; dots on the beat; strokes on 16ths; a final breath on the logo.",
+    sound: "The drums fall away; a swirl; three bells on the three dots; the Kin motif; a long D resolve.",
   },
 ];
 const tc = (f) => `00:${String(Math.floor(f / 60)).padStart(2, "0")}:${String(f % 60).padStart(2, "0")}`;
@@ -137,8 +137,8 @@ body{font-family:Geist;color:#102F59;background:#fff}
   </style></head><body>
     <section class="cover"><p class="mono">KIN · 30-second brand film · storyboard</p><h1>The Fair Starting Line</h1>
       <h2 class="blue">Ten wallets. One funder. One limit.</h2>
-      <div class="row"><p class="mono">1920×1080 · 16:9</p><p class="mono">60 fps · 1,800 frames</p><p class="mono">H.264 · AAC 48 kHz</p><p class="mono">Fragmentation → discovery → connection → enforcement → fairness → brand</p></div>
-      <p style="margin-top:40px;max-width:1100px;font-size:18px;line-height:1.5">Keyframes are taken from the final rendered video. Product claims follow the Kin site and repository: wallets funded by the same source share one buy limit, enforced in the pool by a Uniswap v4 hook; launches run on Base Sepolia (testnet). Kin links wallets by funding, not by identity, and makes splitting costly and visible; it does not claim to catch every split.</p>
+      <div class="row"><p class="mono">1920×1080 · 16:9</p><p class="mono">60 fps · 1,800 frames</p><p class="mono">H.264 · AAC 48 kHz</p><p class="mono">128 BPM · 16 bars</p><p class="mono">Fragmentation → discovery → connection → enforcement → fairness → brand</p></div>
+      <p style="margin-top:40px;max-width:1100px;font-size:18px;line-height:1.5">Cut on a 128 BPM grid: 16 bars are exactly 30 seconds, every cut lands on a bar line and every accent on a beat. Keyframes are taken from the final rendered video. Product claims follow the Kin site and repository: wallets funded by the same source share one buy limit, enforced in the pool by a Uniswap v4 hook; launches run on Base Sepolia (testnet). Kin links wallets by funding, not by identity, and makes splitting costly and visible; it does not claim to catch every split.</p>
     </section>${pages}</body></html>`);
   await page.waitForTimeout(500);
   await page.pdf({ path: path.resolve(ROOT, "..", "kin-storyboard.pdf"), width: "1600px", height: "900px", printBackground: true });

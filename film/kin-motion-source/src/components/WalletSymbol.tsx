@@ -13,6 +13,8 @@ export const WalletSymbol = ({
   label,
   labelOpacity = 0,
   labelPos,
+  claspColor = C.white,
+  labelColor = C.navy,
 }: {
   shape: Organic;
   fill?: string;
@@ -21,6 +23,8 @@ export const WalletSymbol = ({
   label?: string;
   labelOpacity?: number;
   labelPos?: { x: number; y: number };
+  claspColor?: string;
+  labelColor?: string;
 }) => {
   const d = organicPath(shape);
   if (!d) return null;
@@ -32,7 +36,7 @@ export const WalletSymbol = ({
       {claspR > 0.3 && (
         <>
           <circle cx={shape.x + 30 * k} cy={shape.y} r={claspR + 3 * k * marker} fill={C.blue} opacity={marker} />
-          <circle cx={shape.x + 30 * k} cy={shape.y} r={claspR} fill={marker > 0.5 ? C.white : C.white} />
+          <circle cx={shape.x + 30 * k} cy={shape.y} r={claspR} fill={claspColor} />
         </>
       )}
       {label && labelOpacity > 0 && labelPos && (
@@ -44,7 +48,7 @@ export const WalletSymbol = ({
           fontFamily={FONT.mono}
           fontSize={17}
           letterSpacing="0.12em"
-          fill={C.navy}
+          fill={labelColor}
           opacity={labelOpacity}
         >
           {label}

@@ -146,3 +146,105 @@ export const MonoLabel = ({
 export const SceneLabel = ({ index, title, inAt, outAt }: { index: string; title: string; inAt: number; outAt: number }) => (
   <MonoLabel text={`[ ${index} ]  ${title}`} x={120} y={84} inAt={inAt} outAt={outAt} size={19} speed={2} />
 );
+
+/**
+ * A headline that whips in on the beat: it arrives fast from the side, stretched, and snaps into place (camera
+ * motion blur smears it on the way in). Parts marked `bracket` get the site's corner-bracket callout, which closes
+ * in around the word on `bracketAt`.
+ */
+export const WhipLine = ({
+  parts,
+  x,
+  y,
+  size,
+  inAt,
+  outAt = 1e9,
+  color,
+  accent,
+  weight = 700,
+  dir = 1,
+  bracketAt,
+  upper = true,
+  tracking = -0.035,
+}: {
+  parts: { t: string; bracket?: boolean; color?: string }[];
+  x: number;
+  y: number;
+  size: number;
+  inAt: number;
+  outAt?: number;
+  color: string;
+  accent: string;
+  weight?: number;
+  dir?: 1 | -1;
+  bracketAt?: number;
+  upper?: boolean;
+  tracking?: number;
+}) => {
+  const f = useCurrentFrame();
+  if (f < inAt - 1 || f > outAt + 16) return null;
+  const tx = track(f, [
+    [inAt, dir * 560],
+    [inAt + 20, 0, E.expoOut],
+    [outAt, 0],
+    [outAt + 14, -dir * 900, E.expoIn],
+  ]);
+  const sx = track(f, [
+    [inAt, 1.3],
+    [inAt + 20, 1, E.expoOut],
+    [outAt, 1],
+    [outAt + 14, 1.3, E.expoIn],
+  ]);
+  const op = clamp((f - inAt) / 3) * (1 - clamp((f - outAt - 10) / 4));
+  const b = bracketAt === undefined ? 0 : clamp((f - bracketAt) / 16);
+  const inset = track(f, [
+    [bracketAt ?? 1e9, -0.5],
+    [(bracketAt ?? 1e9) + 16, -0.13, E.backOut],
+  ]);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        transform: `translateX(${tx}px) scaleX(${sx})`,
+        transformOrigin: dir > 0 ? "left center" : "right center",
+        opacity: op,
+        fontFamily: FONT.sans,
+        fontWeight: weight,
+        fontSize: size,
+        lineHeight: 1,
+        letterSpacing: `${tracking}em`,
+        color,
+        whiteSpace: "pre",
+        textTransform: upper ? "uppercase" : "none",
+      }}
+    >
+      {parts.map((p, i) => (
+        <span key={i} style={{ position: "relative", color: p.color ?? color }}>
+          {p.t}
+          {p.bracket && b > 0 && <Brackets inset={inset} color={accent} opacity={b} />}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+const Brackets = ({ inset, color, opacity }: { inset: number; color: string; opacity: number }) => {
+  const arm = "0.2em";
+  const th = "0.045em";
+  const base = { position: "absolute" as const, width: arm, height: arm, borderColor: color, borderStyle: "solid", opacity };
+  // The span's box is the font's full line box; Geist caps sit 0.275em below its top and 0.26em above its
+  // bottom, so the brackets are offset to frame the capitals themselves.
+  const i = `${inset}em`;
+  const t = `${0.275 + inset}em`;
+  const bt = `${0.26 + inset}em`;
+  return (
+    <>
+      <span style={{ ...base, left: i, top: t, borderWidth: `${th} 0 0 ${th}` }} />
+      <span style={{ ...base, right: i, top: t, borderWidth: `${th} ${th} 0 0` }} />
+      <span style={{ ...base, left: i, bottom: bt, borderWidth: `0 0 ${th} ${th}` }} />
+      <span style={{ ...base, right: i, bottom: bt, borderWidth: `0 ${th} ${th} 0` }} />
+    </>
+  );
+};

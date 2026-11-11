@@ -9,6 +9,7 @@ export const FundingNode = ({
   fill = C.navy,
   label = "SHARED FUNDER",
   labelOpacity = 0,
+  knockout = "#FFFFFF",
 }: {
   x: number;
   y: number;
@@ -17,6 +18,7 @@ export const FundingNode = ({
   fill?: string;
   label?: string;
   labelOpacity?: number;
+  knockout?: string;
 }) => {
   if (r <= 0.2) return null;
   return (
@@ -33,7 +35,7 @@ export const FundingNode = ({
           letterSpacing="0.16em"
           fill={fill}
           opacity={labelOpacity}
-          stroke="#FFFFFF"
+          stroke={knockout}
           strokeWidth={10}
           strokeLinejoin="round"
           paintOrder="stroke"

@@ -12,17 +12,25 @@ A 30-second brand film for Kin. **Ten wallets. One funder. One limit.**
 
 ## The film
 
-FRAGMENTATION → DISCOVERY → CONNECTION → ENFORCEMENT → FAIRNESS → BRAND, as one continuous piece: the same shapes
-change role from scene to scene instead of cutting.
+FRAGMENTATION → DISCOVERY → CONNECTION → ENFORCEMENT → FAIRNESS → BRAND, cut on a musical grid: 128 BPM, 16 bars,
+exactly 30 seconds. Every cut lands on a bar line and every accent on a beat, and the same shapes change role from
+scene to scene. A KIN HUD (crop marks, bar and beat counter, scene, frame and timecode), film grain and camera motion
+blur tie the scenes together; colour fields cut from white to navy (the mechanism) to one blue bar (the stamp) and
+back.
 
-| Time | Scene | What happens |
-|---|---|---|
-| 00:00–00:04 | 01 The visual identity | Navy organic forms assemble into the Kin pattern, turn, and swell until navy floods the frame |
-| 00:04–00:08 | 02 The problem | The flood opens; ten forms become ten wallets. "One person. Multiple wallets." Their clasps turn blue together; faint lines point to one hidden source |
-| 00:08–00:13 | 03 The discovery | The wallets sweep into a circle, the funder rises into the centre, the funding links draw out. "Ten wallets. One funder." |
-| 00:13–00:19 | 04 The mechanism | One ring around the group is the shared limit. Each buy adds to one arc; when it closes, the next buy is refused at the ring. "One shared limit." "Enforced onchain." |
-| 00:19–00:24 | 05 The fair starting line | The network becomes one emblem standing on a single line with the returning pattern. "One funder. One limit. One fair starting line." |
-| 00:24–00:30 | 06 The brand reveal | The pattern frames the screen; the ring becomes the Kin mark's ring, the ten wallets merge into its three dots, the wordmark draws. "Fair token launches on Base" |
+| Bars | Time | Scene | What happens |
+|---|---|---|---|
+| 1–2 | 00:00–03:75 | 01 The pattern | Navy organic forms burst into the Kin pattern; one is inspected (SHAPE PEBBLE, ROT …°); the field swells to a navy flood |
+| 3–4 | 03:75–07:50 | 02 The problem | The flood bursts; ten forms become ten wallets. ONE PERSON. MULTIPLE [WALLETS]. Clasps turn blue together; lines point to one hidden source |
+| 5–7 | 07:50–13:13 | 03 The link | The wallets sweep into a circle; the funder lands; a link draws on every 8th note (LINKS 01/10 → 10/10). TEN WALLETS. ONE [FUNDER]. |
+| 8–10 | 13:13–18:75 | 04 The limit | Cut to navy: one ring is the shared limit; buys fill it on the beat; the sixth is refused. ONE SHARED [LIMIT]. Cut to blue: ENFORCED ONCHAIN. |
+| 11–13 | 18:75–24:38 | 05 The fair starting line | Cut to white: the network becomes one emblem on one line with the pattern. ONE FUNDER. ONE LIMIT. ONE [FAIR] STARTING LINE. |
+| 14–16 | 24:38–30:00 | 06 Kin | The pattern frames the screen; the ring and three dots (on three beats) become the Kin mark; the wordmark draws. Fair token launches on Base |
+
+The motion language follows the reference reel that was provided (a 15 s, 1080p60, 128 BPM motion reel): beat-locked
+hard cuts, full-bleed colour fields, heavy whip-in type with bracket callouts, design-tool overlays with live
+readouts, grain and a persistent HUD. Its content and identity are not used: everything here is Kin's own palette,
+type, logo and story.
 
 **Product accuracy.** Every claim comes from the Kin site and repository: wallets funded by the same source share
 one buy limit, enforced in the pool by a Uniswap v4 hook (a buy that would take the group past its limit reverts
@@ -33,8 +41,8 @@ funding, not by identity; it doesn't claim Kin catches every split, and it uses 
 `kin-motion-source/public/fonts`), the accent is the site's blue `#2f55e4`, and the logo is drawn from the exact
 geometry of `brand/kin-logo-on-light.svg`. The end frame shows that geometry unaltered.
 
-**Sound.** Original, synthesised from scratch in `kin-motion-source/scripts/sound.py` (numpy, no samples), cued
-to the frame timeline. Integrated loudness about −17 LUFS, peaks at −1 dBFS.
+**Sound.** An original 128 BPM score and sound design, synthesised from scratch in `kin-motion-source/scripts/sound.py`
+(numpy, no samples) on the same bar grid as the picture. Integrated loudness about −16 LUFS, peaks at −1 dBFS.
 
 ## Reproduce it
 
@@ -65,7 +73,8 @@ node scripts/stills.mjs out/stills 300 900 1799               # single frames fo
 
 ```
 kin-motion-source/
-  src/tokens.ts                 colours, fonts, 12-column grid, scene boundaries, custom easing curves
+  src/tokens.ts                 colours, fonts, 12-column grid, custom easing curves
+  src/timing.ts                 the 128 BPM grid (bars, beats), colour fields and their cut points, scene names
   src/lib/anim.ts               frame-based keyframe tracks, easing progress, colour mix, deterministic random
   src/lib/organic.ts            one parametric family for every shape (superellipse + taper + seeded irregularity +
                                 hollow), so any shape morphs into any other
@@ -76,20 +85,23 @@ kin-motion-source/
     FundingNode.tsx             the shared funder
     ConnectionNetwork.tsx       curved funding links drawn progressively, with pulses
     SharedLimit.tsx             the ring: limit track, spend arc, enforcement echo
-    KineticTypography.tsx       masked headline lines, typed mono labels, scene labels
+    KineticTypography.tsx       beat-locked whip-in headlines with bracket callouts, masked lines, typed mono labels
+    Annotation.tsx              design-tool selection: bounding box, handles, crosshair, live readouts
+    Hud.tsx                     crop marks, title, bar/beat counter, scene, frame number and timecode
+    Grain.tsx                   per-frame film grain and vignette
     KinLogo.tsx                 the logo from the original SVG geometry, stroke by stroke
     SceneTransitions.tsx        radial exits, stretch-and-settle entries, arcing morphs
-  src/Film.tsx                  the timeline: one choreography where the pattern, wallets, funder and ring persist
-                                and change role; graphics under camera motion blur (12 samples, 180° shutter),
-                                typography above it, crisp
+  src/Film.tsx                  the timeline on the bar grid: one choreography where the pattern, wallets, funder and
+                                ring persist and change role; colour field → everything under camera motion blur
+                                (12 samples, 200° shutter) → grain → HUD
   scripts/                      sound.py, render.mjs, mux.sh, verify.sh, docs.cjs, stills.mjs, montage.py
 ```
 
-## What was missing
+## References
 
-The brief referenced an uploaded motion-design video and an uploaded navy-and-white abstract pattern. Neither was
-in this build environment (the uploads folder was empty), so they could not be inspected. The pattern was built
-from the brief's description of it (deep navy organic shapes, white negative space, irregular rounded silhouettes,
-varied proportions, circles, hollow forms, elongated forms) and lives in one file, `src/lib/pattern.ts`, so it can
-be retuned to the real image in minutes. The live site (kinverse.vercel.app) was not reachable from this
-environment either; its source (`web/` on `main`, the deployed code) was run locally and studied instead.
+- **Kin site and repository** (`web/` on `main`, the code deployed at kinverse.vercel.app): brand, type, logo and
+  every product claim. The live URL was not reachable from the build environment; the deployed source was run locally.
+- **Reference motion reel** (provided as an MP4, 15 s, 1920×1080, 60 fps, 128 BPM): the motion language and the
+  quality bar. Analysed with ffprobe/ffmpeg: scene changes every 1.87 s (one bar), frames sampled at 4 fps.
+- **Navy-and-white organic pattern**: the image was not provided to the build environment. The pattern was built
+  from the brief's description and lives in one file, `src/lib/pattern.ts`, ready to be retuned to the real image.
