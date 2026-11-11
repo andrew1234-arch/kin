@@ -111,6 +111,10 @@ const inField = (s: Organic) => ((s.x - CENTER.x) / 760) ** 2 + ((s.y - 540) / 3
 const FRAME = PATTERN.filter((p) => !inField(p.shape)).map((p) => p.shape);
 const RUNNER_TO_FRAME = RUNNERS.map((_, r) => Math.round((r * (FRAME.length - 1)) / (RUNNERS.length - 1)));
 
+/** 1 on each beat in [from, to), decaying over ~10 frames: rhythm for resting compositions. */
+const onBeat = (f: number, from: number, to: number, decay = 10) =>
+  f >= from && f < to ? Math.max(0, 1 - ((f - from) % BEAT) / decay) : 0;
+
 /** Moments that hit: the camera takes a small kick on each. */
 const IMPACTS = [at(2), at(5), CUT.navy, CUT.blue, CUT.white, at(14)];
 
@@ -199,7 +203,9 @@ const Scene = () => {
     let pulse = 0;
     for (const [arr, w] of BUYS) if (w === i) pulse = Math.max(pulse, Math.sin(Math.PI * clamp((f - (arr - TRAVEL) + 6) / 16)));
     if (REFUSED.wallet === i) pulse = Math.max(pulse, Math.sin(Math.PI * clamp((f - (REFUSED.arrive - TRAVEL) + 6) / 16)));
-    shape = { ...shape, s: shape.s * (1 + 0.18 * pulse) };
+    // Resting rows and circles pulse on the beat (bars 4 and 7), a wave across the ten.
+    const beat = onBeat(f - i * 1.5, at(3), at(4)) + onBeat(f - i * 1.5, at(6), at(7));
+    shape = { ...shape, s: shape.s * (1 + 0.18 * pulse + 0.07 * beat) };
     if (f > at(3) && f < CUT.white) shape = { ...shape, y: shape.y + drift(f, i, 2.4, 140) };
     return { shape, form, fill };
   });
@@ -226,7 +232,7 @@ const Scene = () => {
   const links: Link[] = wallets.map((w, i) => {
     const k = linkOrder.indexOf(i);
     const draw = prog(f, linkStart(k), linkStart(k) + 20, E.expoOut);
-    const intensity = field === "navy" ? 0.42 : track(f, [[at(5), 1], [at(7), 1], [CUT.white, 0.7], [at(13), 0.7], [at(13, 1), 0, E.expoIn]]);
+    const intensity = field === "navy" ? 0.42 : track(f, [[at(5), 1], [at(7), 1], [CUT.white, 0.7], [at(13) - 4, 0.7], [at(13) + 6, 0, E.expoIn]]);
     const dx = w.shape.x - funderPos.x;
     const dy = w.shape.y - funderPos.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -283,7 +289,12 @@ const Scene = () => {
       const up = prog(f, st, st + 24, E.backOut);
       if (up <= 0) return;
       let s: Organic = { ...r, y: r.y + (r.h + 20) * (1 - up) };
-      if (f >= at(11, 2)) s = { ...s, rot: s.rot + drift(f, i * 5, 3, 160), s: s.s * (1 + 0.03 * Math.sin((f - at(11, 2)) / (BEAT / Math.PI / 2) + i)) };
+      if (f >= at(11, 2) && f < at(13)) {
+        // On the line, the forms hop on every beat in a wave from left to right: ready at the start.
+        const ph = (f - at(11, 2) - i * 3 + BEAT * 8) % BEAT;
+        const hop = f - at(11, 2) - i * 3 >= 0 ? Math.sin(Math.PI * clamp(ph / 15)) : 0;
+        s = { ...s, y: s.y - 16 * hop, rot: s.rot + drift(f, i * 5, 3, 160) };
+      }
       if (f >= at(13)) s = arcMorph(s, FRAME[RUNNER_TO_FRAME[i]], prog(f, at(13) + i * 3, at(13) + i * 3 + 56, E.quintInOut), 0.16);
       runnerShapes.push({ key: `r${i}`, shape: s, fill: C.navy });
     });
@@ -311,7 +322,7 @@ const Scene = () => {
   const logoBreath = 1 + 0.014 * Math.sin(Math.PI * clamp((f - at(15)) / 50)) * (f > at(15) && f < at(15) + 50 ? 1 : 0);
 
   // ---- camera: an entrance push, a breath through the middle, and a kick on every impact ------------------
-  let cam = track(f, [[0, 1.08], [at(1), 1, E.expoOut], [at(4), 1], [at(7), 1.03, E.sineInOut], [CUT.white, 1]]);
+  let cam = track(f, [[0, 1.08], [at(1), 1, E.expoOut], [at(4), 1], [at(7), 1.03, E.sineInOut], [CUT.white, 1], [at(12), 1], [at(13), 1.035, E.sineInOut], [at(13) + 20, 1]]);
   for (const im of IMPACTS) if (f >= im && f < im + 18) cam *= 1 + 0.022 * (1 - E.expoOut(clamp((f - im) / 18)));
 
   const blueBar = field === "blue";
@@ -356,7 +367,7 @@ const Scene = () => {
               x={ring.x}
               y={ring.y}
               r={ring.r}
-              stroke={ring.stroke * (1 + 0.8 * flash)}
+              stroke={ring.stroke * (1 + 0.8 * flash + 0.35 * onBeat(f, at(11, 2), at(13)))}
               draw={ringDraw}
               track={1 - prog(f, CUT.white, CUT.white + 30)}
               trackColor={ink.fg}
